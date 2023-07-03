@@ -141,8 +141,8 @@ if __name__ == "__main__":
     mu = z0 + np.sum(beta.T * X, axis=1)
     y = rng.normal(mu, 0.1)
 
-    kappa_max = 100
-    eps = 0.1
+    kappa_max = 300
+    eps = [0.1, 0.01]
     max_depth = 2
     min_samples_leaf = 20
     distribution = "normal"
@@ -162,4 +162,4 @@ if __name__ == "__main__":
     )
 
     for j in range(p):
-        print(f"optimal kappa for dimension {j}: {tuning_results['kappa'][j]}")
+        print(f"optimal kappa for coefficient {j}: {tuning_results['kappa'][j]}")
