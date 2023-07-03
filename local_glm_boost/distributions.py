@@ -60,6 +60,44 @@ class Distribution:
         """
         pass
 
+    def mle(
+        self,
+        y: np.ndarray,
+    ):
+        """
+        Calculates the maximum likelihood estimate for the parameter.
+
+        :param y: The target values.
+        :return: The maximum likelihood estimate for the parameter.
+        """
+        z0 = minimize(
+            fun=lambda z: self.loss(y=y, z=z).sum(),
+            x0=0,
+        )[
+            "x"
+        ][0]
+        return z0
+
+    def glm_initialization(
+        self,
+        y: np.ndarray,
+        z0: float,
+        X: np.ndarray,
+    ) -> np.ndarray:
+        """
+        Calculates the initial parameter estimates as a GLM.
+
+        :param y: The target values.
+        :param z0: The constant MLE.
+        :param X: The input training data for the model as a numpy array.
+        :return: The parameter estimates for a GLM.
+        """
+        beta0 = minimize(
+            fun=lambda beta: self.loss(y=y, z=z0 + X @ beta).sum(),
+            x0=np.zeros(X.shape[1]),
+        )["x"]
+        return beta0[:, None]
+
     def opt_step(
         self,
         y: np.ndarray,
