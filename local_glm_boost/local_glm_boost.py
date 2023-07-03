@@ -82,6 +82,30 @@ class LocalGLMBooster:
                     beta[j] += self.eps[j] * beta_add
                     z += self.eps[j] * beta_add * X[:, j]
 
+    def update(
+        self,
+        X: np.ndarray,
+        y: np.ndarray,
+        j: int,
+    ) -> None:
+        """
+        Updates the current boosting model with one additional tree
+
+        :param X: The training input data, shape (n_samples, n_features).
+        :param y: The target values for the training data.
+        :param j: Coefficient  to update
+        """
+        z = self.predict(X)
+        self.trees[j].append(
+            LocalBoostingTree(
+                max_depth=self.max_depth[j],
+                min_samples_leaf=self.min_samples_leaf[j],
+                distribution=self.distribution,
+            )
+        )
+        self.trees[j][-1].fit_gradients(X=X, y=y, z=z, j=j)
+        self.kappa[j] += 1
+
     def _adjust_hyperparameters(self) -> None:
         """Adjust hyperparameters given the new covariate dimensions."""
 
@@ -108,7 +132,7 @@ class LocalGLMBooster:
         :param X: Input data matrix of shape (n, p).
         :return: Predicted parameter values for the input data of shape (n, p).
         """
-        return self.beta0 + np.array(
+        return np.tile(self.beta0, X.shape[0]) + np.array(
             [
                 sum(
                     [
@@ -116,6 +140,8 @@ class LocalGLMBooster:
                         for k in range(self.kappa[j])
                     ]
                 )
+                if self.kappa[j] > 0
+                else np.zeros(X.shape[0])
                 for j in range(self.p)
             ]
         )
