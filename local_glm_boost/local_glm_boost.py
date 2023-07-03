@@ -1,31 +1,40 @@
-from typing import List, Optional, Union
+from typing import List, Union, Optional
 
 import numpy as np
-from sklearn.ensemble import GradientBoostingRegressor
+
+from distributions import Distribution, initiate_distribution
+from local_boosting_tree import LocalBoostingTree
 
 
 class LocalGLMBooster:
     def __init__(
         self,
-        kappa: Union[int, List[int]] = 100,
-        eps: Union[float, List[float]] = 0.1,
-        max_depth: Union[int, List[int]] = 2,
-        min_samples_leaf: Union[int, List[int]] = 20,
+        p: Optional[int] = 1,
+        kappa: Union[List[int], int] = 100,
+        eps: Union[List[float], float] = 0.1,
+        max_depth: Union[List[int], int] = 2,
+        min_samples_leaf: Union[List[int], int] = 20,
+        distribution: Union[Distribution, str] = "normal",
     ):
         """
-        :param kappa: Number of boosting steps. Dimension-wise or global for all parameter dimensions.
-        :param eps: Shrinkage factors, which scales the contribution of each tree. Dimension-wise or global for all parameter dimensions.
-        :param max_depth: Maximum depths of each decision tree. Dimension-wise or global for all parameter dimensions.
-        :param min_samples_leaf: Minimum number of samples required at a leaf node. Dimension-wise or global for all parameter dimensions.
+        :param kappa: Number of boosting steps. Dimension-wise or global for all coefficients.
+        :param eps: Shrinkage factors, which scales the contribution of each tree. Dimension-wise or global for all coefficients
+        :param max_depth: Maximum depths of each decision tree. Dimension-wise or global for all coefficients.
+        :param min_samples_leaf: Minimum number of samples required at a leaf node. Dimension-wise or global for all coefficients.
+        :param distribution: The distribution of the response variable. A Distribution object or a string.
         """
         self.kappa = kappa
         self.eps = eps
         self.max_depth = max_depth
         self.min_samples_leaf = min_samples_leaf
 
+        if isinstance(distribution, str):
+            self.distribution = initiate_distribution(distribution)
+        else:
+            self.distribution = distribution
+
         self.p = None
         self.z0 = None
-        self.beta0 = None
         self.trees = None
 
     def fit(
@@ -40,24 +49,45 @@ class LocalGLMBooster:
         :param y: True response values for the input data of shape (n,).
         """
         self.p = X.shape[1]
+        self._adjust_hyperparameters()
         self.z0 = y.mean()
-        self.trees = [[None] * self.kappa for j in range(self.p)]
+        self.trees = [
+            [
+                LocalBoostingTree(
+                    max_depth=self.max_depth[j],
+                    min_samples_leaf=self.min_samples_leaf[j],
+                    distribution=self.distribution,
+                )
+                for _ in range(self.kappa[j])
+            ]
+            for j in range(self.p)
+        ]
         beta = np.zeros((self.p, X.shape[0]))
         z = self.z0 + np.sum(beta.T * X, axis=1)
 
-        for k in range(self.kappa):
+        for k in range(max(self.kappa)):
             for j in range(self.p):
-                g = -2 * X[:, j] * (y - z)
-                self.trees[j][k] = GradientBoostingRegressor(
-                    max_depth=self.max_depth,
-                    min_samples_leaf=self.min_samples_leaf,
-                    n_estimators=1,
-                    learning_rate=self.eps,
-                )
-                self.trees[j][k].fit(X, -g)
-                beta_add = self.trees[j][k].predict(X)
-                beta[j] += beta_add
-                z += beta_add * X[:, j]
+                if k < self.kappa[j]:
+                    self.trees[j][k].fit_gradients(X=X, y=y, z=z, j=j)
+                    beta_add = self.trees[j][k].predict(X)
+                    beta[j] += self.eps[j] * beta_add
+                    z += self.eps[j] * beta_add * X[:, j]
+
+    def _adjust_hyperparameters(self) -> None:
+        """Adjust hyperparameters given the new covariate dimensions."""
+
+        def adjust_param(param: str):
+            param_value = getattr(self, param)
+            if isinstance(param_value, List):
+                if len(param_value) != self.p:
+                    raise ValueError(
+                        f"Length of {param} must be equal to the number of covariates."
+                    )
+            else:
+                setattr(self, param, [param_value] * self.p)
+
+        for param in ["kappa", "eps", "max_depth", "min_samples_leaf"]:
+            adjust_param(param)
 
     def predict_parameter(
         self,
@@ -69,11 +99,17 @@ class LocalGLMBooster:
         :param X: Input data matrix of shape (n, p).
         :return: Predicted parameter values for the input data of shape (n, p).
         """
-        beta = np.zeros((self.p, X.shape[0]))
-        for j in range(self.p):
-            for k in range(self.kappa):
-                beta[j] += self.trees[j][k].predict(X)
-        return beta
+        return np.array(
+            [
+                sum(
+                    [
+                        self.eps[j] * self.trees[j][k].predict(X)
+                        for k in range(self.kappa[j])
+                    ]
+                )
+                for j in range(self.p)
+            ]
+        )
 
     def predict(
         self,
@@ -88,23 +124,58 @@ class LocalGLMBooster:
         beta = self.predict_parameter(X=X)
         return self.z0 + np.sum(beta.T * X, axis=1)
 
+    def feature_importances(
+        self, j: Union[str, int] = "all", normalize: bool = True
+    ) -> np.ndarray:
+        """
+        Computes the feature importances for parameter dimension j
+
+        :param j: Parameter dimension. If 'all', calculate importance over all parameter dimensions.
+        :return: Feature importance of shape (n_features,)
+        """
+        if j == "all":
+            feature_importances = np.array(
+                [
+                    [tree.feature_importances() for tree in self.trees[j]]
+                    for j in range(self.d)
+                ]
+            ).sum(axis=(0, 1))
+        else:
+            feature_importances = np.array(
+                [tree.feature_importances() for tree in self.trees[j]]
+            ).sum(axis=0)
+        if normalize:
+            feature_importances /= feature_importances.sum()
+        return feature_importances
+
 
 if __name__ == "__main__":
     n = 10000
-    p = 1
+    p = 2
     rng = np.random.default_rng(0)
     X = rng.normal(size=(n, p))
+    z0 = 0
+    beta0 = np.sin(5 * X[:, 1])
+    beta1 = X[:, 0]
+    beta = np.stack([beta0, beta1], axis=1).T
 
-    mu = 1 + X[:, 0] * (X[:, 0] > 0)
-    y = rng.normal(mu, 1)
+    mu = z0 + np.sum(beta.T * X, axis=1)
+    y = rng.normal(mu, 0.1)
 
     model = LocalGLMBooster(
         kappa=100,
-        eps=0.01,
+        eps=0.1,
         max_depth=2,
-        min_samples_leaf=20,
+        min_samples_leaf=10,
     )
     model.fit(X, y)
 
-    print(f"Intercept loss: {np.sum((y-y.mean())**2)}")
-    print(f"Model loss: {np.sum((y-model.predict(X))**2)}")
+    print(f"Intercept MSE: {np.mean((y-y.mean())**2)}")
+    print(f"Model MSE: {np.mean((y-model.predict(X))**2)}")
+
+    for j in range(2):
+        feature_importances = model.feature_importances(j=j, normalize=True)
+        for k in range(2):
+            print(
+                f"Feature importance for covariate {j} on beta_{k}: {feature_importances[k]}"
+            )
