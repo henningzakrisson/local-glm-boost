@@ -1,0 +1,181 @@
+from typing import List, Union, Optional
+
+import numpy as np
+
+from distributions import Distribution, initiate_distribution
+from local_boosting_tree import LocalBoostingTree
+
+
+class LocalGLMBooster:
+    def __init__(
+        self,
+        p: Optional[int] = 1,
+        kappa: Union[List[int], int] = 100,
+        eps: Union[List[float], float] = 0.1,
+        max_depth: Union[List[int], int] = 2,
+        min_samples_leaf: Union[List[int], int] = 20,
+        distribution: Union[Distribution, str] = "normal",
+    ):
+        """
+        :param kappa: Number of boosting steps. Dimension-wise or global for all coefficients.
+        :param eps: Shrinkage factors, which scales the contribution of each tree. Dimension-wise or global for all coefficients
+        :param max_depth: Maximum depths of each decision tree. Dimension-wise or global for all coefficients.
+        :param min_samples_leaf: Minimum number of samples required at a leaf node. Dimension-wise or global for all coefficients.
+        :param distribution: The distribution of the response variable. A Distribution object or a string.
+        """
+        self.kappa = kappa
+        self.eps = eps
+        self.max_depth = max_depth
+        self.min_samples_leaf = min_samples_leaf
+
+        if isinstance(distribution, str):
+            self.distribution = initiate_distribution(distribution)
+        else:
+            self.distribution = distribution
+
+        self.p = None
+        self.z0 = None
+        self.trees = None
+
+    def fit(
+        self,
+        X: np.ndarray,
+        y: np.ndarray,
+    ):
+        """
+        Fit the model to the data.
+
+        :param X: Input data matrix of shape (n, p).
+        :param y: True response values for the input data of shape (n,).
+        """
+        self.p = X.shape[1]
+        self._adjust_hyperparameters()
+        self.z0 = y.mean()
+        self.trees = [
+            [
+                LocalBoostingTree(
+                    max_depth=self.max_depth[j],
+                    min_samples_leaf=self.min_samples_leaf[j],
+                    distribution=self.distribution,
+                )
+                for _ in range(self.kappa[j])
+            ]
+            for j in range(self.p)
+        ]
+        beta = np.zeros((self.p, X.shape[0]))
+        z = self.z0 + np.sum(beta.T * X, axis=1)
+
+        for k in range(max(self.kappa)):
+            for j in range(self.p):
+                if k < self.kappa[j]:
+                    self.trees[j][k].fit_gradients(X=X, y=y, z=z, j=j)
+                    beta_add = self.trees[j][k].predict(X)
+                    beta[j] += self.eps[j] * beta_add
+                    z += self.eps[j] * beta_add * X[:, j]
+
+    def _adjust_hyperparameters(self) -> None:
+        """Adjust hyperparameters given the new covariate dimensions."""
+
+        def adjust_param(param: str):
+            param_value = getattr(self, param)
+            if isinstance(param_value, List):
+                if len(param_value) != self.p:
+                    raise ValueError(
+                        f"Length of {param} must be equal to the number of covariates."
+                    )
+            else:
+                setattr(self, param, [param_value] * self.p)
+
+        for param in ["kappa", "eps", "max_depth", "min_samples_leaf"]:
+            adjust_param(param)
+
+    def predict_parameter(
+        self,
+        X: np.ndarray,
+    ) -> np.ndarray:
+        """
+        Predict the parameter values for the input data.
+
+        :param X: Input data matrix of shape (n, p).
+        :return: Predicted parameter values for the input data of shape (n, p).
+        """
+        return np.array(
+            [
+                sum(
+                    [
+                        self.eps[j] * self.trees[j][k].predict(X)
+                        for k in range(self.kappa[j])
+                    ]
+                )
+                for j in range(self.p)
+            ]
+        )
+
+    def predict(
+        self,
+        X: np.ndarray,
+    ) -> np.ndarray:
+        """
+        Predict the response for the input data.
+
+        :param X: Input data matrix of shape (n, p).
+        :return: Predicted response values for the input data of shape (n,).
+        """
+        beta = self.predict_parameter(X=X)
+        return self.z0 + np.sum(beta.T * X, axis=1)
+
+    def feature_importances(
+        self, j: Union[str, int] = "all", normalize: bool = True
+    ) -> np.ndarray:
+        """
+        Computes the feature importances for parameter dimension j
+
+        :param j: Parameter dimension. If 'all', calculate importance over all parameter dimensions.
+        :return: Feature importance of shape (n_features,)
+        """
+        if j == "all":
+            feature_importances = np.array(
+                [
+                    [tree.feature_importances() for tree in self.trees[j]]
+                    for j in range(self.d)
+                ]
+            ).sum(axis=(0, 1))
+        else:
+            feature_importances = np.array(
+                [tree.feature_importances() for tree in self.trees[j]]
+            ).sum(axis=0)
+        if normalize:
+            feature_importances /= feature_importances.sum()
+        return feature_importances
+
+
+if __name__ == "__main__":
+    n = 10000
+    p = 2
+    rng = np.random.default_rng(0)
+    X = rng.normal(size=(n, p))
+    z0 = 0
+    beta0 = np.sin(5 * X[:, 1])
+    beta1 = X[:, 0]
+    beta = np.stack([beta0, beta1], axis=1).T
+
+    mu = z0 + np.sum(beta.T * X, axis=1)
+    y = rng.normal(mu, 0.1)
+
+    model = LocalGLMBooster(
+        kappa=100,
+        eps=0.1,
+        max_depth=2,
+        min_samples_leaf=10,
+    )
+    model.fit(X, y)
+
+    print(f"Intercept MSE: {np.mean((y-y.mean())**2)}")
+    print(f"Model MSE: {np.mean((y-model.predict(X))**2)}")
+
+    for j in range(2):
+        feature_importances = model.feature_importances(j=j, normalize=True)
+        for k in range(2):
+            print(
+                f"Feature importance for covariate {j} on beta_{k}: {feature_importances[k]}"
+            )
