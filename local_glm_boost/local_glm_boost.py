@@ -1,4 +1,5 @@
 from typing import List, Union, Optional
+import warnings
 
 import numpy as np
 
@@ -34,6 +35,7 @@ class LocalGLMBooster:
             self.distribution = distribution
 
         self.p = None
+        self.beta0 = None
         self.z0 = None
         self.trees = None
 
@@ -41,6 +43,7 @@ class LocalGLMBooster:
         self,
         X: np.ndarray,
         y: np.ndarray,
+        glm_initialization: bool = True,
     ):
         """
         Fit the model to the data.
@@ -50,7 +53,6 @@ class LocalGLMBooster:
         """
         self.p = X.shape[1]
         self._adjust_hyperparameters()
-        self.z0 = y.mean()
         self.trees = [
             [
                 LocalBoostingTree(
@@ -62,7 +64,14 @@ class LocalGLMBooster:
             ]
             for j in range(self.p)
         ]
-        beta = np.zeros((self.p, X.shape[0]))
+
+        self.z0 = self.distribution.mle(y=y)
+        if glm_initialization:
+            self.beta0 = self.distribution.glm_initialization(X=X, y=y, z0=self.z0)
+        else:
+            self.beta0 = np.zeros((self.p, 1))
+
+        beta = np.tile(self.beta0, X.shape[0])
         z = self.z0 + np.sum(beta.T * X, axis=1)
 
         for k in range(max(self.kappa)):
@@ -99,7 +108,7 @@ class LocalGLMBooster:
         :param X: Input data matrix of shape (n, p).
         :return: Predicted parameter values for the input data of shape (n, p).
         """
-        return np.array(
+        return self.beta0 + np.array(
             [
                 sum(
                     [
@@ -129,6 +138,7 @@ class LocalGLMBooster:
     ) -> np.ndarray:
         """
         Computes the feature importances for parameter dimension j
+        Note that the GLM initialization is NOT taken into consideration when computing feature importances.
 
         :param j: Parameter dimension. If 'all', calculate importance over all parameter dimensions.
         :return: Feature importance of shape (n_features,)
@@ -146,6 +156,11 @@ class LocalGLMBooster:
             ).sum(axis=0)
         if normalize:
             feature_importances /= feature_importances.sum()
+
+        if np.any(self.beta0[j] != 0):
+            warnings.warn(
+                "The feature importances do not take the GLM initialization into account."
+            )
         return feature_importances
 
 
@@ -168,9 +183,10 @@ if __name__ == "__main__":
         max_depth=2,
         min_samples_leaf=10,
     )
-    model.fit(X, y)
+    model.fit(X, y, glm_initialization=False)
 
     print(f"Intercept MSE: {np.mean((y-y.mean())**2)}")
+    print(f"GLM MSE: {np.mean((y-model.z0 - model.beta0.T @ X.T)**2)}")
     print(f"Model MSE: {np.mean((y-model.predict(X))**2)}")
 
     for j in range(2):
