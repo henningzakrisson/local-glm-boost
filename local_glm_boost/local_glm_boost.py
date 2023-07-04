@@ -191,33 +191,56 @@ class LocalGLMBooster:
 
 
 if __name__ == "__main__":
-    n = 10000
-    p = 2
+    from sklearn.model_selection import train_test_split
+
+    n = 200000
+    p = 8
     rng = np.random.default_rng(0)
-    X = rng.normal(size=(n, p))
+    # Generate normal random data with unit variance and correlation 0 between covariates except for between covariates 2 and 8 where the correlation should be 0.5
+    cov = np.eye(p)
+    cov[1, 7] = cov[7, 1] = 0.5
+    X = rng.multivariate_normal(np.zeros(p), cov, size=n)
     z0 = 0
-    beta0 = np.sin(5 * X[:, 1])
-    beta1 = X[:, 0]
-    beta = np.stack([beta0, beta1], axis=1).T
+
+    beta0 = 0.5 * np.ones(n)
+    beta1 = -0.5 * X[:, 1]
+    beta2 = np.abs(X[:, 2]) * np.sin(2 * X[:, 2]) / X[:, 2]
+    beta3 = 0.5 * X[:, 4]
+    beta4 = (1 / 8) * X[:, 5] ** 2
+    beta5 = np.zeros(n)
+    beta6 = np.zeros(n)
+    beta7 = np.zeros(n)
+    beta = np.stack([beta0, beta1, beta2, beta3, beta4, beta5, beta6, beta7], axis=1).T
 
     mu = z0 + np.sum(beta.T * X, axis=1)
-    y = rng.normal(mu, 0.1)
+    y = rng.normal(mu, 1)
+
+    y_train, y_test, X_train, X_test = train_test_split(y, X, test_size=0.5, random_state=1)
+
+    max_depth = 2
+    min_samples_leaf = 10
+    distribution = "normal"
+    kappa_max = 30
+    eps = 0.1
+
+    tuning_results = tune_kappa(
 
     model = LocalGLMBooster(
         kappa=100,
         eps=0.1,
         max_depth=2,
         min_samples_leaf=10,
+        distribution="normal",
     )
-    model.fit(X, y, glm_initialization=False)
+    model.fit(X, y, glm_initialization=True)
 
     print(f"Intercept MSE: {np.mean((y-y.mean())**2)}")
     print(f"GLM MSE: {np.mean((y-model.z0 - model.beta0.T @ X.T)**2)}")
     print(f"Model MSE: {np.mean((y-model.predict(X))**2)}")
 
-    for j in range(2):
+    for j in range(p):
         feature_importances = model.feature_importances(j=j, normalize=True)
-        for k in range(2):
+        for k in range(p):
             print(
                 f"Feature importance for covariate {j} on beta_{k}: {feature_importances[k]}"
             )
