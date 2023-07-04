@@ -111,7 +111,7 @@ class LocalGLMBooster:
 
         def adjust_param(param: str):
             param_value = getattr(self, param)
-            if isinstance(param_value, List):
+            if isinstance(param_value, List) or isinstance(param_value, np.ndarray):
                 if len(param_value) != self.p:
                     raise ValueError(
                         f"Length of {param} must be equal to the number of covariates."
@@ -170,16 +170,26 @@ class LocalGLMBooster:
         :return: Feature importance of shape (n_features,)
         """
         if j == "all":
-            feature_importances = np.array(
-                [
-                    [tree.feature_importances() for tree in self.trees[j]]
-                    for j in range(self.d)
-                ]
-            ).sum(axis=(0, 1))
+            feature_importances = (
+                (
+                    np.array(
+                        [
+                            [tree.feature_importances() for tree in self.trees[j]]
+                            for j in range(self.p)
+                        ]
+                    ).sum(axis=(0, 1))
+                )
+                if len(self.trees[0]) > 0
+                else np.zeros(self.p)
+            )
         else:
-            feature_importances = np.array(
-                [tree.feature_importances() for tree in self.trees[j]]
-            ).sum(axis=0)
+            feature_importances = (
+                np.array([tree.feature_importances() for tree in self.trees[j]]).sum(
+                    axis=0
+                )
+                if len(self.trees[j]) > 0
+                else np.zeros(self.p)
+            )
         if normalize:
             feature_importances /= feature_importances.sum()
 
@@ -191,33 +201,77 @@ class LocalGLMBooster:
 
 
 if __name__ == "__main__":
-    n = 10000
-    p = 2
+    from sklearn.model_selection import train_test_split
+    from tune_kappa import tune_kappa
+    from logger import LocalGLMBoostLogger
+
+    n = 200000
+    p = 8
     rng = np.random.default_rng(0)
-    X = rng.normal(size=(n, p))
+    cov = np.eye(p)
+    cov[1, 7] = cov[7, 1] = 0.5
+    X = rng.multivariate_normal(np.zeros(p), cov, size=n)
     z0 = 0
-    beta0 = np.sin(5 * X[:, 1])
-    beta1 = X[:, 0]
-    beta = np.stack([beta0, beta1], axis=1).T
+
+    beta0 = 0.5 * np.ones(n)
+    beta1 = -0.5 * X[:, 1]
+    beta2 = np.abs(X[:, 2]) * np.sin(2 * X[:, 2]) / X[:, 2]
+    beta3 = 0.5 * X[:, 4]
+    beta4 = (1 / 8) * X[:, 5] ** 2
+    beta5 = np.zeros(n)
+    beta6 = np.zeros(n)
+    beta7 = np.zeros(n)
+    beta = np.stack([beta0, beta1, beta2, beta3, beta4, beta5, beta6, beta7], axis=1).T
 
     mu = z0 + np.sum(beta.T * X, axis=1)
-    y = rng.normal(mu, 0.1)
+    y = rng.normal(mu, 1)
+
+    y_train, y_test, X_train, X_test = train_test_split(
+        y, X, test_size=0.5, random_state=1
+    )
+
+    max_depth = 2
+    min_samples_leaf = 10
+    distribution = "normal"
+    kappa_max = 1000
+    eps = 0.01
+
+    logger = LocalGLMBoostLogger(verbose=2)
+
+    tuning_results = tune_kappa(
+        X=X_train,
+        y=y_train,
+        max_depth=max_depth,
+        min_samples_leaf=min_samples_leaf,
+        distribution=distribution,
+        kappa_max=kappa_max,
+        eps=eps,
+        n_splits=2,
+        random_state=2,
+        logger=logger,
+    )
+
+    kappa_opt = tuning_results["kappa"]
+
+    for j in range(p):
+        print(f"Optimal kappa for covariate {j}: {kappa_opt[j]}")
 
     model = LocalGLMBooster(
-        kappa=100,
-        eps=0.1,
-        max_depth=2,
-        min_samples_leaf=10,
+        kappa=kappa_opt,
+        eps=eps,
+        max_depth=max_depth,
+        min_samples_leaf=min_samples_leaf,
+        distribution="normal",
     )
-    model.fit(X, y, glm_initialization=False)
+    model.fit(X, y, glm_initialization=True)
 
-    print(f"Intercept MSE: {np.mean((y-y.mean())**2)}")
-    print(f"GLM MSE: {np.mean((y-model.z0 - model.beta0.T @ X.T)**2)}")
-    print(f"Model MSE: {np.mean((y-model.predict(X))**2)}")
+    print(f"Intercept MSE: {np.mean((y_test-y_train.mean())**2)}")
+    print(f"GLM MSE: {np.mean((y_test-model.z0 - model.beta0.T @ X_test.T)**2)}")
+    print(f"Model MSE: {np.mean((y_test-model.predict(X_test))**2)}")
 
-    for j in range(2):
+    for j in range(p):
         feature_importances = model.feature_importances(j=j, normalize=True)
-        for k in range(2):
+        for k in range(p):
             print(
                 f"Feature importance for covariate {j} on beta_{k}: {feature_importances[k]}"
             )

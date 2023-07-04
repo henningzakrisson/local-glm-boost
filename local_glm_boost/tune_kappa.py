@@ -5,6 +5,7 @@ import numpy as np
 
 from local_glm_boost import LocalGLMBooster
 from distributions import initiate_distribution, Distribution
+from logger import LocalGLMBoostLogger
 
 
 def _fold_split(
@@ -45,6 +46,7 @@ def tune_kappa(
     n_splits: int = 4,
     random_state: Optional[int] = None,
     rng: Optional[np.random.Generator] = None,
+    logger: Optional[LocalGLMBoostLogger] = None,
 ) -> Dict[str, Union[List[int], np.ndarray]]:
     """Tunes the kappa parameter of a CycGBM model using k-fold cross-validation.
 
@@ -62,6 +64,8 @@ def tune_kappa(
         - "kappa": The optimal kappa parameter value for each parameter dimension.
         - "loss": The loss values for each kappa parameter value.
     """
+    if logger is None:
+        logger = LocalGLMBoostLogger(verbose=0)
     if rng is None:
         rng = np.random.default_rng(random_state)
     folds = _fold_split(X=X, n_splits=n_splits, rng=rng)
@@ -71,6 +75,9 @@ def tune_kappa(
     kappa_max = kappa_max if isinstance(kappa_max, list) else [kappa_max] * p
     loss = np.ones((n_splits, max(kappa_max) + 1, p)) * np.nan
     for i, idx in enumerate(folds):
+        logger.append_format_level(f"fold {i+1}/{n_splits}")
+        logger.log("tuning", verbose=1)
+
         idx_train, idx_valid = idx
         X_train, y_train = X[idx_train], y[idx_train]
         X_valid, y_valid = X[idx_valid], y[idx_valid]
@@ -105,13 +112,20 @@ def tune_kappa(
                 + [loss[i, k, j] >= loss[i, k, j - 1] for j in range(1, p)]
             ):
                 loss[i, k + 1 :, :] = loss[i, k, -1]
+                logger.log(
+                    msg=f"tuning converged after {k} steps",
+                    verbose=1,
+                )
                 break
 
             if k == max(kappa_max):
-                warnings.warn(
-                    "Maximum kappa value was reached without convergence. "
-                    "Consider increasing the maximum kappa value."
+                logger.log(
+                    msg="tuning did not converge",
+                    verbose=1,
                 )
+            logger.log_progress(step=k, total_steps=max(kappa_max) + 1, verbose=2)
+        logger.reset_progress()
+        logger.remove_format_level()
 
     loss_total = loss.sum(axis=0)
     loss_delta = np.zeros((p, max(kappa_max) + 1))
@@ -122,7 +136,7 @@ def tune_kappa(
     did_not_converge = (loss_delta > 0).sum(axis=1) == 0
     for j in range(p):
         if did_not_converge[j] and kappa_max[j] > 0:
-            warnings.warn(f"tuning did not converge for dimension {j}")
+            logger.log(f"tuning did not converge for dimension {j}", verbose=1)
             kappa[j] = kappa_max[j]
 
     return {"kappa": kappa, "loss": loss}
