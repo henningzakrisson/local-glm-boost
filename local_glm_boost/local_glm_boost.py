@@ -190,13 +190,9 @@ class LocalGLMBooster:
                 if len(self.trees[j]) > 0
                 else np.zeros(self.p)
             )
-        if normalize:
+        if normalize and sum(feature_importances) > 0:
             feature_importances /= feature_importances.sum()
 
-        if np.any(self.beta0[j] != 0):
-            warnings.warn(
-                "The feature importances do not take the GLM initialization into account."
-            )
         return feature_importances
 
 
