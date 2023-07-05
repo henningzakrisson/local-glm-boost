@@ -3,9 +3,9 @@ import warnings
 
 import numpy as np
 
-from local_glm_boost import LocalGLMBooster
-from distributions import initiate_distribution, Distribution
-from logger import LocalGLMBoostLogger
+from .local_glm_boost import LocalGLMBooster
+from .distributions import initiate_distribution, Distribution
+from .logger import LocalGLMBoostLogger
 
 
 def _fold_split(
