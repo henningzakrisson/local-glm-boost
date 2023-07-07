@@ -72,16 +72,13 @@ class LocalGLMBooster:
             self.z0 = self.distribution.mle(y=y)
             self.beta0 = np.zeros((self.p, 1))
 
-        beta = np.tile(self.beta0, X.shape[0])
-        z = self.z0 + np.sum(beta.T * X, axis=1)
+        z = self.z0 + (self.beta0.T @ X.T).T.reshape(-1)
 
         for k in range(max(self.kappa)):
             for j in range(self.p):
                 if k < self.kappa[j]:
                     self.trees[j][k].fit_gradients(X=X, y=y, z=z, j=j)
-                    beta_add = self.trees[j][k].predict(X)
-                    beta[j] += self.eps[j] * beta_add
-                    z += self.eps[j] * beta_add * X[:, j]
+                    z += self.eps[j] * self.trees[j][k].predict(X) * X[:, j]
 
         # Re-adjust the initial parameter values
         if glm_init:
@@ -94,6 +91,7 @@ class LocalGLMBooster:
         X: np.ndarray,
         y: np.ndarray,
         j: int,
+        z: Optional[np.ndarray] = None,
     ) -> None:
         """
         Updates the current boosting model with one additional tree
@@ -101,8 +99,10 @@ class LocalGLMBooster:
         :param X: The training input data, shape (n_samples, n_features).
         :param y: The target values for the training data.
         :param j: Coefficient  to update
+        :param z: The current predictions of the model. If None, the predictions are computed from the current model.
         """
-        z = self.predict(X)
+        if z is None:
+            z = self.predict(X)
         self.trees[j].append(
             LocalBoostingTree(
                 max_depth=self.max_depth[j],

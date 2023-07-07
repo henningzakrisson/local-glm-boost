@@ -73,7 +73,10 @@ def tune_kappa(
         distribution = initiate_distribution(distribution=distribution)
     p = X.shape[1]
     kappa_max = kappa_max if isinstance(kappa_max, list) else [kappa_max] * p
-    loss = np.ones((n_splits, max(kappa_max) + 1, p)) * np.nan
+    loss = {
+        "train": np.ones((n_splits, max(kappa_max) + 1, p)) * np.nan,
+        "valid": np.ones((n_splits, max(kappa_max) + 1, p)) * np.nan,
+    }
     for i, idx in enumerate(folds):
         logger.append_format_level(f"fold {i+1}/{n_splits}")
         logger.log("tuning", verbose=1)
@@ -90,28 +93,49 @@ def tune_kappa(
             distribution=distribution,
         )
         model.fit(X_train, y_train, glm_init=True)
+        z_train = model.predict(X_train)
         z_valid = model.predict(X_valid)
-        loss[i, 0, :] = model.distribution.loss(y=y_valid, z=z_valid).sum()
+        loss["train"][i, 0, :] = model.distribution.loss(y=y_train, z=z_train).sum()
+        loss["valid"][i, 0, :] = model.distribution.loss(y=y_valid, z=z_valid).sum()
 
         for k in range(1, max(kappa_max) + 1):
             for j in range(p):
                 if k < kappa_max[j]:
-                    model.update(X=X_train, y=y_train, j=j)
-                    beta_add = model.eps[j] * model.trees[j][-1].predict(X_valid)
-                    z_valid += beta_add * X_valid[:, j]
-                    loss[i, k, j] = model.distribution.loss(y=y_valid, z=z_valid).sum()
+                    model.update(X=X_train, y=y_train, j=j, z=z_train)
+                    z_train += (
+                        model.eps[j]
+                        * model.trees[j][-1].predict(X_train)
+                        * X_train[:, j]
+                    )
+                    z_valid += (
+                        model.eps[j]
+                        * model.trees[j][-1].predict(X_valid)
+                        * X_valid[:, j]
+                    )
+
+                    loss["train"][i, k, j] = model.distribution.loss(
+                        y=y_train, z=z_train
+                    ).sum()
+                    loss["valid"][i, k, j] = model.distribution.loss(
+                        y=y_valid, z=z_valid
+                    ).sum()
                 else:
                     if j == 0:
-                        loss[i, k, j] = loss[i, k - 1, j + 1]
+                        loss["train"][i, k, j] = loss["train"][i, k - 1, j + 1]
+                        loss["valid"][i, k, j] = loss["valid"][i, k - 1, j + 1]
                     else:
-                        loss[i, k, j] = loss[i, k, j - 1]
+                        loss["train"][i, k, j] = loss["train"][i, k, j - 1]
+                        loss["valid"][i, k, j] = loss["valid"][i, k, j - 1]
 
             # Stop if no improvement was made
             if k != max(kappa_max) and np.all(
-                [loss[i, k, 0] >= loss[i, k - 1, 1]]
-                + [loss[i, k, j] >= loss[i, k, j - 1] for j in range(1, p)]
+                [loss["valid"][i, k, 0] >= loss["valid"][i, k - 1, 1]]
+                + [
+                    loss["valid"][i, k, j] >= loss["valid"][i, k, j - 1]
+                    for j in range(1, p)
+                ]
             ):
-                loss[i, k + 1 :, :] = loss[i, k, -1]
+                loss["valid"][i, k + 1 :, :] = loss["valid"][i, k, -1]
                 logger.log(
                     msg=f"tuning converged after {k} steps",
                     verbose=1,
@@ -127,7 +151,7 @@ def tune_kappa(
         logger.reset_progress()
         logger.remove_format_level()
 
-    loss_total = loss.sum(axis=0)
+    loss_total = loss["valid"].sum(axis=0)
     loss_delta = np.zeros((p, max(kappa_max) + 1))
     loss_delta[0, 1:] = loss_total[1:, 0] - loss_total[:-1, -1]
     for j in range(1, p):
