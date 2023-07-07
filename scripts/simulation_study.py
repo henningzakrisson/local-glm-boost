@@ -10,9 +10,10 @@ from local_glm_boost.logger import LocalGLMBoostLogger
 output_path = "../data/results/simulation_study"
 os.makedirs(output_path, exist_ok=True)
 
-logger = LocalGLMBoostLogger(verbose=2,
-                             output_path=output_path,
-                             )
+logger = LocalGLMBoostLogger(
+    verbose=2,
+    output_path=output_path,
+)
 
 logger.log("Simulating data...")
 # Set up simulation metadata
@@ -27,10 +28,10 @@ X = rng.multivariate_normal(np.zeros(p), cov, size=n)
 betas = [[]] * p
 betas[0] = 0.5 * np.ones(n)
 betas[1] = -0.25 * X[:, 1]
-betas[2] = 0.5 * np.abs(X[:,2]) * np.sin(2 * X[:, 2]) / X[:,2]
+betas[2] = 0.5 * np.abs(X[:, 2]) * np.sin(2 * X[:, 2]) / X[:, 2]
 betas[3] = np.zeros(n)
-betas[4] = 0.5 * X[:,3]
-betas[5] = (1/8)*X[:,4]**2
+betas[4] = 0.5 * X[:, 3]
+betas[5] = (1 / 8) * X[:, 4] ** 2
 betas[6] = np.zeros(n)
 betas[7] = np.zeros(n)
 beta = np.stack(betas, axis=1).T
@@ -73,7 +74,7 @@ tuning_results = tune_kappa(
     kappa_max=kappa_max,
     eps=eps,
     n_splits=n_splits,
-    rng = rng,
+    rng=rng,
     logger=logger,
 )
 
@@ -96,40 +97,58 @@ beta_hat = model.predict_parameter(X_test)
 
 logger.log("Making predictions...")
 
-beta_hat = {'true': pd.DataFrame(beta_test),
-            "local_glm_boost": pd.DataFrame(beta_hat)
-            }
+beta_hat = {"true": pd.DataFrame(beta_test), "local_glm_boost": pd.DataFrame(beta_hat)}
 
 mu_hat = {
-    'true': mu_test,
+    "true": mu_test,
     "intercept": y_train.mean() * np.ones(len(y_test)),
     "glm": (model.z0 + model.beta0.reshape(p) @ X_test.T),
     "local_glm_boost": model.predict(X_test),
 }
 
 logger.log("Calculating MSE...")
-results = pd.DataFrame(index = ['true', 'intercept', 'glm', 'local_glm_boost'], columns = ['Training MSE', 'Test MSE'], dtype = float)
-results.loc['true'] = [np.mean((mu_train - y_train) ** 2), np.mean((mu_test - y_test) ** 2)]
-results.loc['intercept'] = [np.mean((y_train.mean() - y_train) ** 2), np.mean((y_train.mean() - y_test) ** 2)]
-results.loc['glm'] = [np.mean((model.z0 + model.beta0.reshape(p) @ X_train.T - y_train) ** 2), np.mean((model.z0 + model.beta0.reshape(p) @ X_test.T - y_test) ** 2)]
-results.loc['local_glm_boost'] = [np.mean((model.predict(X_train) - y_train) ** 2), np.mean((model.predict(X_test) - y_test) ** 2)]
+results = pd.DataFrame(
+    index=["true", "intercept", "glm", "local_glm_boost"],
+    columns=["Training MSE", "Test MSE"],
+    dtype=float,
+)
+results.loc["true"] = [
+    np.mean((mu_train - y_train) ** 2),
+    np.mean((mu_test - y_test) ** 2),
+]
+results.loc["intercept"] = [
+    np.mean((y_train.mean() - y_train) ** 2),
+    np.mean((y_train.mean() - y_test) ** 2),
+]
+results.loc["glm"] = [
+    np.mean((model.z0 + model.beta0.reshape(p) @ X_train.T - y_train) ** 2),
+    np.mean((model.z0 + model.beta0.reshape(p) @ X_test.T - y_test) ** 2),
+]
+results.loc["local_glm_boost"] = [
+    np.mean((model.predict(X_train) - y_train) ** 2),
+    np.mean((model.predict(X_test) - y_test) ** 2),
+]
 
 for model_name in mu_hat.keys():
     logger.log(f"{model_name} MSE: {results.loc[model_name, 'Test MSE']}")
 
 logger.log("Calculating feature importance...")
-feature_importance = pd.DataFrame(index = [j for j in range(p) if kappa_opt[j] > 0], columns = range(p), dtype = float)
+feature_importance = pd.DataFrame(
+    index=[j for j in range(p) if kappa_opt[j] > 0], columns=range(p), dtype=float
+)
 for j in feature_importance.index:
     feature_importance.loc[j] = model.feature_importances(j=j, normalize=True)
 
 feature_importance.index = [f"beta_{j}" for j in feature_importance.index]
-feature_importance.columns = [f'x_{j}' for j in feature_importance.columns]
+feature_importance.columns = [f"x_{j}" for j in feature_importance.columns]
 
 # Save results
 logger.log("Saving results...")
 results.to_csv(f"{output_path}/MSE.csv")
-for data_set in ['train','valid']:
-    pd.DataFrame(tuning_results['loss'][data_set].sum(axis=0)).to_csv(f"{output_path}/tuning_loss_{data_set}.csv")
+for data_set in ["train", "valid"]:
+    pd.DataFrame(tuning_results["loss"][data_set].sum(axis=0)).to_csv(
+        f"{output_path}/tuning_loss_{data_set}.csv"
+    )
 
 pd.DataFrame(kappa_opt).to_csv(f"{output_path}/kappa_opt.csv")
 pd.DataFrame(model.beta0).to_csv(f"{output_path}/beta0.csv")
@@ -143,4 +162,3 @@ for model_name in mu_hat.keys():
     beta_hat[model_name].to_csv(f"{output_path}/beta_hat/{model_name}.csv")
 
 logger.log("Done!")
-
