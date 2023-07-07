@@ -43,13 +43,14 @@ class LocalGLMBooster:
         self,
         X: np.ndarray,
         y: np.ndarray,
-        glm_initialization: bool = True,
+        glm_init: bool = True,
     ):
         """
         Fit the model to the data.
 
         :param X: Input data matrix of shape (n, p).
         :param y: True response values for the input data of shape (n,).
+        :param glm_init: Whether to initialize the model with a GLM fit.
         """
         self.p = X.shape[1]
         self._adjust_hyperparameters()
@@ -65,10 +66,10 @@ class LocalGLMBooster:
             for j in range(self.p)
         ]
 
-        self.z0 = self.distribution.mle(y=y)
-        if glm_initialization:
-            self.beta0 = self.distribution.glm_initialization(X=X, y=y, z0=self.z0)
+        if glm_init:
+            self.z0, self.beta0 = self.distribution.glm(X=X, y=y)
         else:
+            self.z0 = self.distribution.mle(y=y)
             self.beta0 = np.zeros((self.p, 1))
 
         beta = np.tile(self.beta0, X.shape[0])
@@ -81,6 +82,12 @@ class LocalGLMBooster:
                     beta_add = self.trees[j][k].predict(X)
                     beta[j] += self.eps[j] * beta_add
                     z += self.eps[j] * beta_add * X[:, j]
+
+        # Re-adjust the initial parameter values
+        if glm_init:
+            self.z0, self.beta0 = self.distribution.glm(X=X, y=y, z=z)
+        else:
+            self.z0 = self.distribution.mle(y=y, z=z)
 
     def update(
         self,
@@ -164,7 +171,7 @@ class LocalGLMBooster:
     ) -> np.ndarray:
         """
         Computes the feature importances for parameter dimension j
-        Note that the GLM initialization is NOT taken into consideration when computing feature importances.
+        Note that the feature importance is calculated for regression attentions beta_j(x) meaning that the GLM parameters are not taken into account.
 
         :param j: Parameter dimension. If 'all', calculate importance over all parameter dimensions.
         :return: Feature importance of shape (n_features,)
@@ -261,7 +268,7 @@ if __name__ == "__main__":
         min_samples_leaf=min_samples_leaf,
         distribution="normal",
     )
-    model.fit(X, y, glm_initialization=True)
+    model.fit(X, y, glm_init=True)
 
     print(f"True MSE: {np.mean((y_test-mu_test)**2)}")
     print(f"Intercept MSE: {np.mean((y_test-y_train.mean())**2)}")

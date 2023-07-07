@@ -1,4 +1,4 @@
-from typing import Type, Union, List
+from typing import Type, Union, List, Optional
 
 import numpy as np
 from scipy.optimize import minimize
@@ -63,40 +63,47 @@ class Distribution:
     def mle(
         self,
         y: np.ndarray,
+        z: Optional[np.ndarray] = None,
     ):
         """
         Calculates the maximum likelihood estimate for the parameter.
 
         :param y: The target values.
+        :param z: The current parameter estimates.
         :return: The maximum likelihood estimate for the parameter.
         """
-        z0 = minimize(
-            fun=lambda z: self.loss(y=y, z=z).sum(),
+        if z is None:
+            z = np.zeros(y.shape[0])
+        z_opt = minimize(
+            fun=lambda z0: self.loss(y=y, z=z + z0).sum(),
             x0=0,
         )[
             "x"
         ][0]
-        return z0
+        return z_opt
 
-    def glm_initialization(
-        self,
-        y: np.ndarray,
-        z0: float,
-        X: np.ndarray,
+    def glm(
+        self, y: np.ndarray, X: np.ndarray, z: Optional[np.ndarray] = None
     ) -> np.ndarray:
         """
         Calculates the initial parameter estimates as a GLM.
 
         :param y: The target values.
-        :param z0: The constant MLE.
         :param X: The input training data for the model as a numpy array.
+        :param z: The current parameter estimates.
         :return: The parameter estimates for a GLM.
         """
-        beta0 = minimize(
-            fun=lambda beta: self.loss(y=y, z=z0 + X @ beta).sum(),
-            x0=np.zeros(X.shape[1]),
+        if z is None:
+            z = np.zeros(X.shape[0])
+        intercept_and_beta_opt = minimize(
+            fun=lambda intercept_and_beta: self.loss(
+                y=y, z=z + intercept_and_beta[0] + X @ intercept_and_beta[1:, None]
+            ).sum(),
+            x0=np.zeros(X.shape[1] + 1),
         )["x"]
-        return beta0[:, None]
+        intercept = intercept_and_beta_opt[0]
+        beta = intercept_and_beta_opt[1:, None]
+        return intercept, beta
 
     def opt_step(
         self,

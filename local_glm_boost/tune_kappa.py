@@ -89,7 +89,7 @@ def tune_kappa(
             min_samples_leaf=min_samples_leaf,
             distribution=distribution,
         )
-        model.fit(X_train, y_train)
+        model.fit(X_train, y_train, glm_init=True)
         z_valid = model.predict(X_valid)
         loss[i, 0, :] = model.distribution.loss(y=y_valid, z=z_valid).sum()
 
