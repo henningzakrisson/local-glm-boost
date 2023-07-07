@@ -43,13 +43,14 @@ class LocalGLMBooster:
         self,
         X: np.ndarray,
         y: np.ndarray,
-        glm_initialization: bool = True,
+        glm_init: bool = True,
     ):
         """
         Fit the model to the data.
 
         :param X: Input data matrix of shape (n, p).
         :param y: True response values for the input data of shape (n,).
+        :param glm_init: Whether to initialize the model with a GLM fit.
         """
         self.p = X.shape[1]
         self._adjust_hyperparameters()
@@ -65,7 +66,7 @@ class LocalGLMBooster:
             for j in range(self.p)
         ]
 
-        if glm_initialization:
+        if glm_init:
             self.z0, self.beta0 = self.distribution.glm(X=X, y=y)
         else:
             self.z0 = self.distribution.mle(y=y)
@@ -83,7 +84,7 @@ class LocalGLMBooster:
                     z += self.eps[j] * beta_add * X[:, j]
 
         # Re-adjust the initial parameter values
-        if glm_initialization:
+        if glm_init:
             self.z0, self.beta0 = self.distribution.glm(X=X, y=y, z=z)
         else:
             self.z0 = self.distribution.mle(y=y, z=z)
@@ -267,7 +268,7 @@ if __name__ == "__main__":
         min_samples_leaf=min_samples_leaf,
         distribution="normal",
     )
-    model.fit(X, y, glm_initialization=True)
+    model.fit(X, y, glm_init=True)
 
     print(f"True MSE: {np.mean((y_test-mu_test)**2)}")
     print(f"Intercept MSE: {np.mean((y_test-y_train.mean())**2)}")
