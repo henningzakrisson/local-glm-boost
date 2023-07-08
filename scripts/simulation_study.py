@@ -61,8 +61,8 @@ logger.log("Tuning kappa...")
 max_depth = 2
 min_samples_leaf = 10
 distribution = "normal"
-kappa_max = 100
-eps = 0.1
+kappa_max = 3000
+eps = 0.01
 n_splits = 2
 
 tuning_results = tune_kappa(
