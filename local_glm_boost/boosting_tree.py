@@ -1,5 +1,6 @@
 import numpy as np
 from sklearn.tree import DecisionTreeRegressor
+from scipy.optimize import minimize
 
 from local_glm_boost.utils.distributions import Distribution
 
@@ -27,7 +28,11 @@ class LocalBoostingTree(DecisionTreeRegressor):
         :param min_samples_split: The minimum number of samples required to split an internal node.
         :param min_samples_leaf: The minimum number of samples required to be at a leaf node.
         """
-        super().__init__(max_depth=max_depth, min_samples_leaf=min_samples_leaf)
+        super().__init__(
+            max_depth=max_depth,
+            min_samples_split=min_samples_split,
+            min_samples_leaf=min_samples_leaf,
+        )
         self.distribution = distribution
 
     def fit_gradients(
@@ -45,7 +50,7 @@ class LocalBoostingTree(DecisionTreeRegressor):
         :param z: The predicted parameter values from the previous iteration.
         :param j: The index of the current iteration.
         """
-        g = self.distribution.grad(y=y, z=z, X=X, j=j)
+        g = X[:, j] * self.distribution.grad(y=y, z=z)
         self.fit(X, -g)
         self._adjust_node_values(X=X, y=y, z=z, j=j)
 
@@ -68,9 +73,10 @@ class LocalBoostingTree(DecisionTreeRegressor):
         :param node_index: The index of the node to update
         """
         # Optimize node response
-        g_opt = self.distribution.opt_step(
-            y=y, z=z, X=X, j=j, g_0=self.tree_.value[node_index][0]
-        )
+        g_opt = minimize(
+            fun=lambda step: self.distribution.loss(y=y, z=z + X[:, j] * step).sum(),
+            x0=self.tree_.value[node_index][0],
+        ).x[0]
         self.tree_.value[node_index] = g_opt
         self.tree_.impurity[node_index] = self.distribution.loss(
             y=y,

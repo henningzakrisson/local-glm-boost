@@ -28,7 +28,7 @@ class LocalGLMBoosterTestCase(unittest.TestCase):
         self.beta = np.stack(betas, axis=1).T
         self.z = self.z0 + np.sum(self.beta.T * self.X, axis=1)
 
-    def test_loss(
+    def test_normal_loss(
         self,
     ):
         """
@@ -117,6 +117,19 @@ class LocalGLMBoosterTestCase(unittest.TestCase):
         model.fit(X=self.X, y=y)
         self.assertNotEqual(model.beta0[0], 0, msg="GLM not initialized")
         self.assertEqual(model.beta0[1], 0, msg="GLM initialized when it shouldn't")
+
+    def test_no_glm_init(self):
+        """
+        Test the initialization of the model when GLM initialization is not used
+        """
+        y = self.rng.normal(self.z, 1)
+        model = LocalGLMBooster(
+            distribution="normal",
+            glm_init=False,
+        )
+        model.fit(X=self.X, y=y)
+        for j in range(self.X.shape[1]):
+            self.assertEqual(model.beta0[j], 0, msg="GLM initialized when it shouldn't")
 
     def test_pandas_support(self):
         """

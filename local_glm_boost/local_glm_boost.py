@@ -1,7 +1,8 @@
-from typing import List, Union, Optional
+from typing import List, Union, Optional, Tuple
 
 import numpy as np
 import pandas as pd
+from scipy.optimize import minimize
 
 from .utils.distributions import Distribution, initiate_distribution
 from .utils.fix_datatype import fix_datatype
@@ -62,9 +63,10 @@ class LocalGLMBooster:
         if isinstance(X, pd.DataFrame):
             self.feature_names = X.columns
         X, y = fix_datatype(X=X, y=y)
-
         self.p = X.shape[1]
+
         self._adjust_hyperparameters()
+        self.z0, self.beta0 = self.adjust_initializer(X=X, y=y)
         self.trees = [
             [
                 LocalBoostingTree(
@@ -78,13 +80,6 @@ class LocalGLMBooster:
             for j in range(self.p)
         ]
 
-        self.beta0 = np.zeros(self.p)
-        if np.any(self.glm_init):
-            self.z0, beta0 = self.distribution.glm(X=X[:, self.glm_init], y=y)
-            self.beta0[self.glm_init] = beta0
-        else:
-            self.z0 = self.distribution.mle(y=y)
-
         z = self.z0 + (self.beta0.T @ X.T).T.reshape(-1)
 
         for k in range(max(self.n_estimators)):
@@ -94,11 +89,7 @@ class LocalGLMBooster:
                     z += self.learning_rate[j] * self.trees[j][k].predict(X) * X[:, j]
 
         # Re-adjust the initial parameter values
-        if np.any(self.glm_init):
-            self.z0, beta0 = self.distribution.glm(X=X[:, self.glm_init], y=y)
-            self.beta0[self.glm_init] = beta0
-        else:
-            self.z0 = self.distribution.mle(y=y)
+        self.z0, self.beta0 = self.adjust_initializer(X=X, y=y)
 
     def _adjust_hyperparameters(self) -> None:
         """Adjust hyperparameters given the new covariate dimensions."""
@@ -122,6 +113,32 @@ class LocalGLMBooster:
             "glm_init",
         ]:
             adjust_param(param)
+
+    def adjust_initializer(
+        self, X: np.ndarray, y: np.ndarray, z: Optional[np.ndarray] = None
+    ) -> Tuple[float, np.ndarray]:
+        """
+        Adjust the initalization of the model.
+        This will be done as a GLM for all dimensions specified in the model attribute glm_init.
+        If all glm_init are False, the initialization is a constant MLE since the intercept is still estimated.
+
+        :param X: The input training data for the model as a numpy array.
+        :param y: The target values.
+        :param z: The current parameter estimates. If None, the initial parameter estimates are assumed to be zero.
+        :return: The initial parameter estimates.
+        """
+        if z is None:
+            z = np.zeros(X.shape[0])
+        glm_coefficients = minimize(
+            fun=lambda beta: self.distribution.loss(
+                y=y, z=z + beta[0] + X[:, self.glm_init] @ beta[1:, None]
+            ).sum(),
+            x0=np.zeros(1 + sum(self.glm_init)),
+        )["x"]
+        z0 = glm_coefficients[0]
+        beta0 = np.zeros(X.shape[1])
+        beta0[self.glm_init] = glm_coefficients[1:]
+        return z0, beta0
 
     def add_tree(
         self,
