@@ -7,7 +7,8 @@ from local_glm_boost.local_glm_boost import LocalGLMBooster
 from local_glm_boost.tune_kappa import tune_kappa
 from local_glm_boost.logger import LocalGLMBoostLogger
 
-output_path = "../data/results/simulation_study"
+script_dir = os.path.dirname(os.path.realpath(__file__))
+output_path = os.path.join(script_dir, "../data/results/simulation_study")
 os.makedirs(output_path, exist_ok=True)
 
 logger = LocalGLMBoostLogger(
