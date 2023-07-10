@@ -166,3 +166,24 @@ class LocalGLMBoosterTestCase(unittest.TestCase):
                 0,
                 msg=f"Feature importance for non-selected feature non-zero",
             )
+
+    def test_feature_selection_pandas(self):
+        """
+        Test the feature selection support in a dataframe setting
+        """
+        y = pd.Series(self.rng.normal(self.z, 1))
+        X = pd.DataFrame(self.X, columns=["a", "b"])
+        model = LocalGLMBooster(
+            distribution="normal",
+        )
+        model.fit(X=X, y=y, features={"a": ["a"], "b": ["a"]})
+        feature_importances = {
+            coefficient: model.compute_feature_importances(coefficient)
+            for coefficient in X.columns
+        }
+        for coefficient in X.columns:
+            self.assertEqual(
+                feature_importances[coefficient]["b"],
+                0,
+                msg=f"Feature importance for non-selected feature non-zero",
+            )

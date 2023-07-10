@@ -54,7 +54,7 @@ class LocalGLMBooster:
         self,
         X: np.ndarray,
         y: np.ndarray,
-        features: Optional[Dict[int, List[Union[str, int]]]] = None,
+        features: Optional[Dict[Union[str, int], List[Union[str, int]]]] = None,
     ):
         """
         Fit the model to the data.
@@ -67,14 +67,16 @@ class LocalGLMBooster:
             self.feature_names = X.columns
             if features is not None:
                 self.features = {
-                    j: [X.columns.get_loc(f) for f in features[j]]
-                    for j in range(len(X.columns))
+                    X.columns.get_loc(coefficient): [
+                        X.columns.get_loc(feature) for feature in features[coefficient]
+                    ]
+                    for coefficient in X.columns
                 }
         X, y = fix_datatype(X=X, y=y)
         self.p = X.shape[1]
         if features is None:
             self.features = {j: list(range(X.shape[1])) for j in range(self.p)}
-        else:
+        elif self.features is None:
             self.features = features
 
         self._adjust_hyperparameters()
@@ -244,6 +246,9 @@ class LocalGLMBooster:
                 ).sum(axis=0)
                 feature_importances[self.features[j]] += feature_importances_from_trees
         else:
+            if isinstance(j, str):
+                j = self.feature_names.get_loc(j)
+
             feature_importances = np.zeros(self.p)
             feature_importances_from_trees = np.array(
                 [tree.compute_feature_importances() for tree in self.trees[j]]
