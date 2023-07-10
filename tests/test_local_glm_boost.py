@@ -147,3 +147,22 @@ class LocalGLMBoosterTestCase(unittest.TestCase):
             model.distribution.loss(y=y, z=model.predict(X=X[["b", "a"]])).mean(),
             msg="Prediction not invariant to column order",
         )
+
+    def test_feature_selection(self):
+        """
+        Test the feature selection support
+        """
+        y = self.rng.normal(self.z, 1)
+        model = LocalGLMBooster(
+            distribution="normal",
+        )
+        model.fit(X=self.X, y=y, features={0: [0], 1: [0]})
+        feature_importances = {
+            j: model.compute_feature_importances(j) for j in range(self.X.shape[1])
+        }
+        for i in range(self.X.shape[1]):
+            self.assertEqual(
+                feature_importances[i][1],
+                0,
+                msg=f"Feature importance for non-selected feature non-zero",
+            )

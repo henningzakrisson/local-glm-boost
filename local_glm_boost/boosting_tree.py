@@ -1,3 +1,5 @@
+from typing import List
+
 import numpy as np
 from sklearn.tree import DecisionTreeRegressor
 from scipy.optimize import minimize
@@ -41,6 +43,7 @@ class LocalBoostingTree(DecisionTreeRegressor):
         y: np.ndarray,
         z: np.ndarray,
         j: int,
+        features: List[int],
     ) -> None:
         """
         Fits the BoostingTree to the negative gradients and adjusts node values to minimize loss.
@@ -49,9 +52,10 @@ class LocalBoostingTree(DecisionTreeRegressor):
         :param y: The target values.
         :param z: The predicted parameter values from the previous iteration.
         :param j: The index of the current iteration.
+        :param features: The indices of the features to use for the tree.
         """
         g = X[:, j] * self.distribution.grad(y=y, z=z)
-        self.fit(X, -g)
+        self.fit(X[:, features], -g)
         self._adjust_node_values(X=X, y=y, z=z, j=j)
 
     def _adjust_node_values(

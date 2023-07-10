@@ -1,4 +1,4 @@
-from typing import List, Union, Optional, Tuple
+from typing import List, Union, Optional, Tuple, Dict
 
 import numpy as np
 import pandas as pd
@@ -48,22 +48,34 @@ class LocalGLMBooster:
         self.z0 = None
         self.trees = None
         self.feature_names = None
+        self.features = None
 
     def fit(
         self,
         X: np.ndarray,
         y: np.ndarray,
+        features: Optional[Dict[int, List[Union[str, int]]]] = None,
     ):
         """
         Fit the model to the data.
 
         :param X: Input data matrix of shape (n, p).
         :param y: True response values for the input data of shape (n,).
+        :param features: A dictionary of features to be used for each covariate. If None, all covariates are used.
         """
         if isinstance(X, pd.DataFrame):
             self.feature_names = X.columns
+            if features is not None:
+                self.features = {
+                    j: [X.columns.get_loc(f) for f in features[j]]
+                    for j in range(len(X.columns))
+                }
         X, y = fix_datatype(X=X, y=y)
         self.p = X.shape[1]
+        if features is None:
+            self.features = {j: list(range(X.shape[1])) for j in range(self.p)}
+        else:
+            self.features = features
 
         self._adjust_hyperparameters()
         self.z0, self.beta0 = self.adjust_initializer(X=X, y=y)
@@ -85,8 +97,14 @@ class LocalGLMBooster:
         for k in range(max(self.n_estimators)):
             for j in range(self.p):
                 if k < self.n_estimators[j]:
-                    self.trees[j][k].fit_gradients(X=X, y=y, z=z, j=j)
-                    z += self.learning_rate[j] * self.trees[j][k].predict(X) * X[:, j]
+                    self.trees[j][k].fit_gradients(
+                        X=X, y=y, z=z, j=j, features=self.features[j]
+                    )
+                    z += (
+                        self.learning_rate[j]
+                        * self.trees[j][k].predict(X[:, self.features[j]])
+                        * X[:, j]
+                    )
 
         # Re-adjust the initial parameter values
         self.z0, self.beta0 = self.adjust_initializer(X=X, y=y)
@@ -165,7 +183,7 @@ class LocalGLMBooster:
                 min_samples_leaf=self.min_samples_leaf[j],
             )
         )
-        self.trees[j][-1].fit_gradients(X=X, y=y, z=z, j=j)
+        self.trees[j][-1].fit_gradients(X=X, y=y, z=z, j=j, features=self.features[j])
         self.n_estimators[j] += 1
 
     def predict_parameter(
@@ -182,7 +200,8 @@ class LocalGLMBooster:
             [
                 sum(
                     [
-                        self.learning_rate[j] * self.trees[j][k].predict(X)
+                        self.learning_rate[j]
+                        * self.trees[j][k].predict(X[:, self.features[j]])
                         for k in range(self.n_estimators[j])
                     ]
                 )
@@ -218,30 +237,24 @@ class LocalGLMBooster:
         :return: Feature importance of shape (n_features,)
         """
         if j == "all":
-            feature_importances = (
-                (
-                    np.array(
-                        [
-                            [
-                                tree.compute_feature_importances()
-                                for tree in self.trees[j]
-                            ]
-                            for j in range(self.p)
-                        ]
-                    ).sum(axis=(0, 1))
-                )
-                if len(self.trees[0]) > 0
-                else np.zeros(self.p)
-            )
-        else:
-            feature_importances = (
-                np.array(
+            feature_importances = np.zeros(self.p)
+            for j in range(self.p):
+                feature_importances_from_trees = np.array(
                     [tree.compute_feature_importances() for tree in self.trees[j]]
                 ).sum(axis=0)
-                if len(self.trees[j]) > 0
-                else np.zeros(self.p)
-            )
-        if normalize and sum(feature_importances) > 0:
+                feature_importances[self.features[j]] += feature_importances_from_trees
+        else:
+            feature_importances = np.zeros(self.p)
+            feature_importances_from_trees = np.array(
+                [tree.compute_feature_importances() for tree in self.trees[j]]
+            ).sum(axis=0)
+
+            feature_importances[self.features[j]] = feature_importances_from_trees
+        if normalize:
             feature_importances /= feature_importances.sum()
 
+        if self.feature_names is not None:
+            feature_importances = pd.Series(
+                feature_importances, index=self.feature_names
+            )
         return feature_importances
