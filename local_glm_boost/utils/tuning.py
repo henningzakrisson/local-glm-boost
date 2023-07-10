@@ -43,6 +43,7 @@ def tune_n_estimators(
     min_samples_split: Union[int, List[int]] = 2,
     min_samples_leaf: Union[int, List[int]] = 20,
     max_depth: Union[int, List[int]] = 2,
+    glm_init: bool = True,
     n_splits: int = 4,
     random_state: Optional[int] = None,
     rng: Optional[np.random.Generator] = None,
@@ -81,7 +82,7 @@ def tune_n_estimators(
             min_samples_leaf=min_samples_leaf,
             max_depth=max_depth,
         )
-        model.fit(X_train, y_train, glm_init=True)
+        model.fit(X_train, y_train, glm_init=glm_init)
         z_train = model.predict(X_train)
         z_valid = model.predict(X_valid)
         loss_train[i, 0, :] = model.distribution.loss(y=y_train, z=z_train).sum()
