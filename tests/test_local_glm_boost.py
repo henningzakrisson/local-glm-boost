@@ -37,7 +37,7 @@ class LocalGLMBoosterTestCase(unittest.TestCase):
         y = self.rng.normal(self.z, 1)
         model = LocalGLMBooster(
             distribution="normal",
-            n_estimators=[50, 41],
+            n_estimators=[50, 37],
             learning_rate=0.1,
             min_samples_leaf=20,
             max_depth=2,
@@ -46,7 +46,7 @@ class LocalGLMBoosterTestCase(unittest.TestCase):
 
         self.assertAlmostEqual(
             model.distribution.loss(y=y, z=model.predict(X=self.X)).mean(),
-            1.436001411782973,
+            1.4605285970406858,
             places=3,
         )
 
@@ -67,7 +67,7 @@ class LocalGLMBoosterTestCase(unittest.TestCase):
             max_depth=2,
         )
         n_estimators = tuning_results["n_estimators"]
-        n_estimators_expected = [50, 41]
+        n_estimators_expected = [50, 37]
         for i, kappa in enumerate(n_estimators_expected):
             self.assertEqual(
                 n_estimators_expected[i],

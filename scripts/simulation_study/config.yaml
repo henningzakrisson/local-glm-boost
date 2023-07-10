@@ -1,4 +1,4 @@
-n: 20000
+n: 100000
 p: 8
 random_state: 11
 correlations:

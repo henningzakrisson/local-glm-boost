@@ -151,7 +151,7 @@ class LocalGLMBooster:
             z = np.zeros(X.shape[0])
         glm_coefficients = minimize(
             fun=lambda beta: self.distribution.loss(
-                y=y, z=z + beta[0] + X[:, self.glm_init] @ beta[1:, None]
+                y=y, z=z + beta[0] + X[:, self.glm_init] @ beta[1:]
             ).sum(),
             x0=np.zeros(1 + sum(self.glm_init)),
         )["x"]
