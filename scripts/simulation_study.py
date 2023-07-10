@@ -17,7 +17,7 @@ logger = LocalGLMBoostLogger(
 
 logger.log("Simulating data...")
 # Set up simulation metadata
-n = 200000
+n = 2000
 p = 8
 rng = np.random.default_rng(0)
 cov = np.eye(p)
