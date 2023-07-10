@@ -36,7 +36,7 @@ class LocalGLMBoosterTestCase(unittest.TestCase):
         y = self.rng.normal(self.z, 1)
         model = LocalGLMBooster(
             distribution="normal",
-            n_estimators=[50, 40],
+            n_estimators=[50, 41],
             learning_rate=0.1,
             min_samples_leaf=20,
             max_depth=2,
@@ -45,7 +45,7 @@ class LocalGLMBoosterTestCase(unittest.TestCase):
 
         self.assertAlmostEqual(
             model.distribution.loss(y=y, z=model.predict(X=self.X)).mean(),
-            2.464465952769601,
+            1.436001411782973,
             places=3,
         )
 
@@ -66,7 +66,7 @@ class LocalGLMBoosterTestCase(unittest.TestCase):
             max_depth=2,
         )
         n_estimators = tuning_results["n_estimators"]
-        n_estimators_expected = [50, 40]
+        n_estimators_expected = [50, 41]
         for i, kappa in enumerate(n_estimators_expected):
             self.assertEqual(
                 n_estimators_expected[i],
@@ -99,3 +99,20 @@ class LocalGLMBoosterTestCase(unittest.TestCase):
                     places=1,
                     msg=f"Feature importance for attention {i} not as expected for feature {j}",
                 )
+
+    def test_normal_glm_init(self):
+        """
+        Test the GLM initialization of the GLM
+        """
+        y = self.rng.normal(self.z, 1)
+        model = LocalGLMBooster(
+            distribution="normal",
+            learning_rate=0.1,
+            min_samples_leaf=20,
+            max_depth=2,
+            n_estimators=[19, 30],
+            glm_init=[True, False],
+        )
+        model.fit(X=self.X, y=y)
+        self.assertNotEqual(model.beta0[0], 0, msg="GLM not initialized")
+        self.assertEqual(model.beta0[1], 0, msg="GLM initialized when it shouldn't")

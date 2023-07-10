@@ -102,7 +102,7 @@ class Distribution:
             x0=np.zeros(X.shape[1] + 1),
         )["x"]
         intercept = intercept_and_beta_opt[0]
-        beta = intercept_and_beta_opt[1:, None]
+        beta = intercept_and_beta_opt[1:]
         return intercept, beta
 
     def opt_step(

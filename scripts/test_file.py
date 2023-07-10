@@ -43,8 +43,9 @@ model = LocalGLMBooster(
     max_depth=max_depth,
     min_samples_leaf=min_samples_leaf,
     distribution="normal",
+    glm_init=True,
 )
-model.fit(X, y, glm_init=True)
+model.fit(X, y)
 
 print(f"True MSE: {np.mean((y_test-mu_test)**2)}")
 print(f"Intercept MSE: {np.mean((y_test-y_train.mean())**2)}")

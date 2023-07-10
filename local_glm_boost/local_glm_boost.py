@@ -15,6 +15,7 @@ class LocalGLMBooster:
         min_samples_split: Union[List[int], int] = 2,
         min_samples_leaf: Union[List[int], int] = 1,
         max_depth: Union[List[int], int] = 3,
+        glm_init: Union[List[bool], bool] = True,
     ):
         """
         Initialize a LocalGLMBooster model.
@@ -25,12 +26,14 @@ class LocalGLMBooster:
         :param min_samples_split: Minimum number of samples required to split an internal node. Dimension-wise or global for all coefficients.
         :param min_samples_leaf: Minimum number of samples required at a leaf node. Dimension-wise or global for all coefficients.
         :param max_depth: Maximum depths of each decision tree. Dimension-wise or global for all coefficients.
+        :param glm_init: Whether to initialize the model with a GLM fit.
         """
         self.n_estimators = n_estimators
         self.learning_rate = learning_rate
         self.min_samples_split = min_samples_split
         self.min_samples_leaf = min_samples_leaf
         self.max_depth = max_depth
+        self.glm_init = glm_init
 
         if isinstance(distribution, str):
             self.distribution = initiate_distribution(distribution)
@@ -46,14 +49,12 @@ class LocalGLMBooster:
         self,
         X: np.ndarray,
         y: np.ndarray,
-        glm_init: bool = True,
     ):
         """
         Fit the model to the data.
 
         :param X: Input data matrix of shape (n, p).
         :param y: True response values for the input data of shape (n,).
-        :param glm_init: Whether to initialize the model with a GLM fit.
         """
         self.p = X.shape[1]
         self._adjust_hyperparameters()
@@ -70,11 +71,12 @@ class LocalGLMBooster:
             for j in range(self.p)
         ]
 
-        if glm_init:
-            self.z0, self.beta0 = self.distribution.glm(X=X, y=y)
+        self.beta0 = np.zeros(self.p)
+        if np.any(self.glm_init):
+            self.z0, beta0 = self.distribution.glm(X=X[:, self.glm_init], y=y)
+            self.beta0[self.glm_init] = beta0
         else:
             self.z0 = self.distribution.mle(y=y)
-            self.beta0 = np.zeros((self.p, 1))
 
         z = self.z0 + (self.beta0.T @ X.T).T.reshape(-1)
 
@@ -85,10 +87,11 @@ class LocalGLMBooster:
                     z += self.learning_rate[j] * self.trees[j][k].predict(X) * X[:, j]
 
         # Re-adjust the initial parameter values
-        if glm_init:
-            self.z0, self.beta0 = self.distribution.glm(X=X, y=y, z=z)
+        if np.any(self.glm_init):
+            self.z0, beta0 = self.distribution.glm(X=X[:, self.glm_init], y=y)
+            self.beta0[self.glm_init] = beta0
         else:
-            self.z0 = self.distribution.mle(y=y, z=z)
+            self.z0 = self.distribution.mle(y=y)
 
     def _adjust_hyperparameters(self) -> None:
         """Adjust hyperparameters given the new covariate dimensions."""
@@ -109,6 +112,7 @@ class LocalGLMBooster:
             "min_samples_split",
             "min_samples_leaf",
             "max_depth",
+            "glm_init",
         ]:
             adjust_param(param)
 
@@ -150,7 +154,7 @@ class LocalGLMBooster:
         :param X: Input data matrix of shape (n, p).
         :return: Predicted parameter values for the input data of shape (n, p).
         """
-        return np.tile(self.beta0, X.shape[0]) + np.array(
+        return np.tile(self.beta0, (X.shape[0], 1)).T + np.array(
             [
                 sum(
                     [
