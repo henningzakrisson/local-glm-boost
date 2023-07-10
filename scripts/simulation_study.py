@@ -7,7 +7,8 @@ from local_glm_boost.local_glm_boost import LocalGLMBooster
 from local_glm_boost.tune_kappa import tune_kappa
 from local_glm_boost.logger import LocalGLMBoostLogger
 
-output_path = "../data/results/simulation_study"
+script_dir = os.path.dirname(os.path.realpath(__file__))
+output_path = os.path.join(script_dir, "../data/results/simulation_study")
 os.makedirs(output_path, exist_ok=True)
 
 logger = LocalGLMBoostLogger(
@@ -17,7 +18,7 @@ logger = LocalGLMBoostLogger(
 
 logger.log("Simulating data...")
 # Set up simulation metadata
-n = 200000
+n = 20000
 p = 8
 rng = np.random.default_rng(0)
 cov = np.eye(p)
@@ -92,7 +93,7 @@ model = LocalGLMBooster(
     min_samples_leaf=min_samples_leaf,
     distribution="normal",
 )
-model.fit(X, y, glm_init=True)
+model.fit(X=X_train, y=y_train, glm_init=True)
 beta_hat = model.predict_parameter(X_test)
 
 logger.log("Making predictions...")
@@ -159,6 +160,7 @@ os.makedirs(f"{output_path}/mu_hat", exist_ok=True)
 os.makedirs(f"{output_path}/beta_hat", exist_ok=True)
 for model_name in mu_hat.keys():
     np.savetxt(f"{output_path}/mu_hat/{model_name}.csv", mu_hat[model_name])
+for model_name in beta_hat.keys():
     beta_hat[model_name].to_csv(f"{output_path}/beta_hat/{model_name}.csv")
 
 logger.log("Done!")
