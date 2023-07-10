@@ -361,3 +361,6 @@
 [2023-07-07 12:36][Simulating data...]
 [2023-07-07 12:36][Tuning kappa...]
 [2023-07-07 12:36][fold 1/2][tuning]
+[2023-07-08 17:52][Simulating data...]
+[2023-07-08 17:52][Tuning kappa...]
+[2023-07-08 17:52][fold 1/2][tuning]
