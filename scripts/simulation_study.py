@@ -159,6 +159,7 @@ os.makedirs(f"{output_path}/mu_hat", exist_ok=True)
 os.makedirs(f"{output_path}/beta_hat", exist_ok=True)
 for model_name in mu_hat.keys():
     np.savetxt(f"{output_path}/mu_hat/{model_name}.csv", mu_hat[model_name])
+for model_name in beta_hat.keys():
     beta_hat[model_name].to_csv(f"{output_path}/beta_hat/{model_name}.csv")
 
 logger.log("Done!")
