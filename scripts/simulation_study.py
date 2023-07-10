@@ -93,7 +93,7 @@ model = LocalGLMBooster(
     min_samples_leaf=min_samples_leaf,
     distribution="normal",
 )
-model.fit(X, y, glm_init=True)
+model.fit(X=X_train, y=y_train, glm_init=True)
 beta_hat = model.predict_parameter(X_test)
 
 logger.log("Making predictions...")
