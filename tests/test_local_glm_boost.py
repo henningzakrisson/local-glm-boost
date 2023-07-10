@@ -1,6 +1,7 @@
 import unittest
 
 import numpy as np
+import pandas as pd
 
 from local_glm_boost import LocalGLMBooster
 from local_glm_boost.utils.tuning import tune_n_estimators
@@ -27,7 +28,7 @@ class LocalGLMBoosterTestCase(unittest.TestCase):
         self.beta = np.stack(betas, axis=1).T
         self.z = self.z0 + np.sum(self.beta.T * self.X, axis=1)
 
-    def test_normal_loss(
+    def test_loss(
         self,
     ):
         """
@@ -49,7 +50,7 @@ class LocalGLMBoosterTestCase(unittest.TestCase):
             places=3,
         )
 
-    def test_normal_tuning(self):
+    def test_tuning(self):
         """
         Test the tuning of the number of estimators
         """
@@ -74,7 +75,7 @@ class LocalGLMBoosterTestCase(unittest.TestCase):
                 msg=f"Optimal n_estimators for normal distribution not as expected for dimension {i}",
             )
 
-    def test_normal_feature_importance(self):
+    def test_feature_importance(self):
         """
         Test the feature importance calculation
         """
@@ -100,7 +101,7 @@ class LocalGLMBoosterTestCase(unittest.TestCase):
                     msg=f"Feature importance for attention {i} not as expected for feature {j}",
                 )
 
-    def test_normal_glm_init(self):
+    def test_glm_init(self):
         """
         Test the GLM initialization of the GLM
         """
@@ -116,3 +117,20 @@ class LocalGLMBoosterTestCase(unittest.TestCase):
         model.fit(X=self.X, y=y)
         self.assertNotEqual(model.beta0[0], 0, msg="GLM not initialized")
         self.assertEqual(model.beta0[1], 0, msg="GLM initialized when it shouldn't")
+
+    def test_pandas_support(self):
+        """
+        Test the support of pandas dataframes by making sure the prediction
+        is invariant to column order
+        """
+        y = pd.Series(self.rng.normal(self.z, 1))
+        X = pd.DataFrame(self.X, columns=["a", "b"])
+        model = LocalGLMBooster(
+            distribution="normal",
+        )
+        model.fit(X=X, y=y)
+        self.assertEqual(
+            model.distribution.loss(y=y, z=model.predict(X=X)).mean(),
+            model.distribution.loss(y=y, z=model.predict(X=X[["b", "a"]])).mean(),
+            msg="Prediction not invariant to column order",
+        )

@@ -65,6 +65,7 @@ distribution = "normal"
 n_estimators_max = 3000
 learning_rate = 0.01
 n_splits = 2
+glm_init = True
 
 tuning_results = tune_n_estimators(
     X=X_train,
@@ -74,6 +75,7 @@ tuning_results = tune_n_estimators(
     distribution=distribution,
     n_estimators_max=n_estimators_max,
     learning_rate=learning_rate,
+    glm_init=glm_init,
     n_splits=n_splits,
     rng=rng,
     logger=logger,
@@ -92,8 +94,9 @@ model = LocalGLMBooster(
     max_depth=max_depth,
     min_samples_leaf=min_samples_leaf,
     distribution="normal",
+    glm_init=glm_init,
 )
-model.fit(X=X_train, y=y_train, glm_init=True)
+model.fit(X=X_train, y=y_train)
 beta_hat = model.predict_parameter(X_test)
 
 logger.log("Making predictions...")

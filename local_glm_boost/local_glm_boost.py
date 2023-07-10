@@ -1,8 +1,10 @@
 from typing import List, Union, Optional
 
 import numpy as np
+import pandas as pd
 
-from local_glm_boost.utils.distributions import Distribution, initiate_distribution
+from .utils.distributions import Distribution, initiate_distribution
+from .utils.fix_datatype import fix_datatype
 from .boosting_tree import LocalBoostingTree
 
 
@@ -44,6 +46,7 @@ class LocalGLMBooster:
         self.beta0 = None
         self.z0 = None
         self.trees = None
+        self.feature_names = None
 
     def fit(
         self,
@@ -56,6 +59,10 @@ class LocalGLMBooster:
         :param X: Input data matrix of shape (n, p).
         :param y: True response values for the input data of shape (n,).
         """
+        if isinstance(X, pd.DataFrame):
+            self.feature_names = X.columns
+        X, y = fix_datatype(X=X, y=y)
+
         self.p = X.shape[1]
         self._adjust_hyperparameters()
         self.trees = [
@@ -178,6 +185,7 @@ class LocalGLMBooster:
         :param X: Input data matrix of shape (n, p).
         :return: Predicted response values for the input data of shape (n,).
         """
+        X, _ = fix_datatype(X=X, feature_names=self.feature_names)
         beta = self.predict_parameter(X=X)
         return self.z0 + np.sum(beta.T * X, axis=1)
 
