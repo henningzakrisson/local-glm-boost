@@ -1,10 +1,9 @@
 from typing import Union, List, Dict, Tuple, Optional
-import warnings
 
 import numpy as np
 
-from .local_glm_boost import LocalGLMBooster
-from .distributions import initiate_distribution, Distribution
+from local_glm_boost.local_glm_boost import LocalGLMBooster
+from local_glm_boost.utils.distributions import initiate_distribution, Distribution
 from .logger import LocalGLMBoostLogger
 
 

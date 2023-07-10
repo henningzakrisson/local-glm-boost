@@ -1,7 +1,5 @@
 import numpy as np
 from local_glm_boost import LocalGLMBooster
-from local_glm_boost.tune_kappa import tune_kappa
-from local_glm_boost.logger import LocalGLMBoostLogger
 
 n = 20000
 p = 3

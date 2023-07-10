@@ -4,8 +4,8 @@ import numpy as np
 import pandas as pd
 
 from local_glm_boost.local_glm_boost import LocalGLMBooster
-from local_glm_boost.tune_kappa import tune_kappa
-from local_glm_boost.logger import LocalGLMBoostLogger
+from local_glm_boost.utils.tuning import tune_kappa
+from local_glm_boost.utils.logger import LocalGLMBoostLogger
 
 script_dir = os.path.dirname(os.path.realpath(__file__))
 output_path = os.path.join(script_dir, "../data/results/simulation_study")

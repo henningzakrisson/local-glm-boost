@@ -1,7 +1,7 @@
 import numpy as np
 from sklearn.tree import DecisionTreeRegressor
 
-from .distributions import Distribution
+from local_glm_boost.utils.distributions import Distribution
 
 
 class LocalBoostingTree(DecisionTreeRegressor):

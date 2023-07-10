@@ -1,10 +1,9 @@
 from typing import List, Union, Optional
-import warnings
 
 import numpy as np
 
-from .distributions import Distribution, initiate_distribution
-from .local_boosting_tree import LocalBoostingTree
+from local_glm_boost.utils.distributions import Distribution, initiate_distribution
+from .boosting_tree import LocalBoostingTree
 
 
 class LocalGLMBooster:
@@ -204,8 +203,8 @@ class LocalGLMBooster:
 
 
 if __name__ == "__main__":
-    from .tune_kappa import tune_kappa
-    from .logger import LocalGLMBoostLogger
+    from local_glm_boost.utils.tuning import tune_kappa
+    from local_glm_boost.utils.logger import LocalGLMBoostLogger
 
     n = 20000
     p = 3
