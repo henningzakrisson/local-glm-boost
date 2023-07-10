@@ -2,7 +2,7 @@ n: 200000
 p: 8
 random_state: 11
 correlations:
-  - [0, 7, 0.5]
+  - [1, 7, 0.5]
 
 distribution: "normal"
 z0: 0
