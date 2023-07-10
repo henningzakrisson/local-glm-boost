@@ -1,50 +1,65 @@
+# Import stuff
 import os
+import yaml
 
 import numpy as np
 import pandas as pd
+
 
 from local_glm_boost.local_glm_boost import LocalGLMBooster
 from local_glm_boost.utils.tuning import tune_n_estimators
 from local_glm_boost.utils.logger import LocalGLMBoostLogger
 
+# Set up output folder, configuration file, run_id and logger
 script_dir = os.path.dirname(os.path.realpath(__file__))
-output_path = os.path.join(script_dir, "../data/results/simulation_study")
-os.makedirs(output_path, exist_ok=True)
+with open(os.path.join(script_dir, "config.yaml"), "r") as f:
+    config = yaml.load(f, Loader=yaml.FullLoader)
+folder_path = os.path.join(script_dir, "../../data/results/")
+os.makedirs(folder_path, exist_ok=True)
+run_id = (
+    max(
+        [int(folder_name.split("_")[1]) for folder_name in os.listdir(folder_path)]
+        + [0]
+    )
+    + 1
+)
+output_path = os.path.join(folder_path, f"run_{run_id}")
+os.makedirs(output_path)
 
 logger = LocalGLMBoostLogger(
     verbose=2,
     output_path=output_path,
 )
+logger.append_format_level(f"run_{run_id}")
 
 logger.log("Simulating data...")
+
 # Set up simulation metadata
-n = 2000
-p = 8
-rng = np.random.default_rng(0)
+n = config["n"]
+p = config["p"]
+rng = np.random.default_rng(config["random_state"])
 cov = np.eye(p)
-cov[1, 7] = cov[7, 1] = 0.5
+correlations = config["correlations"]
+for feature_1, feature_2, correlation in correlations:
+    cov[feature_1, feature_2] = correlation
+    cov[feature_2, feature_1] = correlation
 X = rng.multivariate_normal(np.zeros(p), cov, size=n)
 
-# Define feature attentions
-betas = [[]] * p
-betas[0] = 0.5 * np.ones(n)
-betas[1] = -0.25 * X[:, 1]
-betas[2] = 0.5 * np.abs(X[:, 2]) * np.sin(2 * X[:, 2]) / X[:, 2]
-betas[3] = np.zeros(n)
-betas[4] = 0.5 * X[:, 3]
-betas[5] = (1 / 8) * X[:, 4] ** 2
-betas[6] = np.zeros(n)
-betas[7] = np.zeros(n)
+# Evaluate beta functions on X
+betas = [eval(beta_code) for beta_code in config["beta_functions"]]
 beta = np.stack(betas, axis=1).T
 
 # Simulate
-z0 = 0
+z0 = config["z0"]
 mu = z0 + np.sum(beta.T * X, axis=1)
 y = rng.normal(mu, 1)
 
 idx = np.arange(n)
 rng.shuffle(idx)
-idx_train, idx_test = idx[: int(0.5 * n)], idx[int(0.5 * n) :]
+idx_train, idx_test = (
+    idx[: int((1 - config["test_size"]) * n)],
+    idx[int(config["test_size"] * n) :],
+)
 X_train, y_train, mu_train, beta_train = (
     X[idx_train],
     y[idx_train],
@@ -59,13 +74,13 @@ X_test, y_test, mu_test, beta_test = (
 )
 
 logger.log("Tuning model...")
-max_depth = 2
-min_samples_leaf = 10
-distribution = "normal"
-n_estimators_max = 3000
-learning_rate = 0.01
-n_splits = 2
-glm_init = True
+max_depth = config["max_depth"]
+min_samples_leaf = config["min_samples_leaf"]
+distribution = config["distribution"]
+n_estimators_max = config["n_estimators_max"]
+learning_rate = config["learning_rate"]
+n_splits = config["n_splits"]
+glm_init = config["glm_init"]
 
 tuning_results = tune_n_estimators(
     X=X_train,

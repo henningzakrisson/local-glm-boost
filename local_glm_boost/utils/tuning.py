@@ -48,7 +48,7 @@ def tune_n_estimators(
     random_state: Optional[int] = None,
     rng: Optional[np.random.Generator] = None,
     logger: Optional[LocalGLMBoostLogger] = None,
-) -> Dict[str, Union[List[int], np.ndarray]]:
+) -> Dict[str, Union[List[int], Dict[str, np.ndarray]]]:
     """Tunes the kappa parameter of a CycGBM model using k-fold cross-validation."""
 
     if logger is None:
