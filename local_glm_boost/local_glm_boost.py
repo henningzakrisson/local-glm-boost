@@ -9,24 +9,28 @@ from .boosting_tree import LocalBoostingTree
 class LocalGLMBooster:
     def __init__(
         self,
-        p: Optional[int] = 1,
-        kappa: Union[List[int], int] = 100,
-        eps: Union[List[float], float] = 0.1,
-        max_depth: Union[List[int], int] = 2,
-        min_samples_leaf: Union[List[int], int] = 20,
         distribution: Union[Distribution, str] = "normal",
+        n_estimators: Union[List[int], int] = 100,
+        learning_rate: Union[List[float], float] = 0.1,
+        min_samples_split: Union[List[int], int] = 2,
+        min_samples_leaf: Union[List[int], int] = 1,
+        max_depth: Union[List[int], int] = 3,
     ):
         """
-        :param kappa: Number of boosting steps. Dimension-wise or global for all coefficients.
-        :param eps: Shrinkage factors, which scales the contribution of each tree. Dimension-wise or global for all coefficients
-        :param max_depth: Maximum depths of each decision tree. Dimension-wise or global for all coefficients.
-        :param min_samples_leaf: Minimum number of samples required at a leaf node. Dimension-wise or global for all coefficients.
+        Initialize a LocalGLMBooster model.
+
         :param distribution: The distribution of the response variable. A Distribution object or a string.
+        :param n_estimators: Number of boosting steps. Dimension-wise or global for all coefficients.
+        :param learning_rate: Shrinkage factors, which scales the contribution of each tree. Dimension-wise or global for all coefficients
+        :param min_samples_split: Minimum number of samples required to split an internal node. Dimension-wise or global for all coefficients.
+        :param min_samples_leaf: Minimum number of samples required at a leaf node. Dimension-wise or global for all coefficients.
+        :param max_depth: Maximum depths of each decision tree. Dimension-wise or global for all coefficients.
         """
-        self.kappa = kappa
-        self.eps = eps
-        self.max_depth = max_depth
+        self.n_estimators = n_estimators
+        self.learning_rate = learning_rate
+        self.min_samples_split = min_samples_split
         self.min_samples_leaf = min_samples_leaf
+        self.max_depth = max_depth
 
         if isinstance(distribution, str):
             self.distribution = initiate_distribution(distribution)
@@ -56,11 +60,12 @@ class LocalGLMBooster:
         self.trees = [
             [
                 LocalBoostingTree(
-                    max_depth=self.max_depth[j],
-                    min_samples_leaf=self.min_samples_leaf[j],
                     distribution=self.distribution,
+                    max_depth=self.max_depth[j],
+                    min_samples_split=self.min_samples_split[j],
+                    min_samples_leaf=self.min_samples_leaf[j],
                 )
-                for _ in range(self.kappa[j])
+                for _ in range(self.n_estimators[j])
             ]
             for j in range(self.p)
         ]
@@ -73,44 +78,17 @@ class LocalGLMBooster:
 
         z = self.z0 + (self.beta0.T @ X.T).T.reshape(-1)
 
-        for k in range(max(self.kappa)):
+        for k in range(max(self.n_estimators)):
             for j in range(self.p):
-                if k < self.kappa[j]:
+                if k < self.n_estimators[j]:
                     self.trees[j][k].fit_gradients(X=X, y=y, z=z, j=j)
-                    z += self.eps[j] * self.trees[j][k].predict(X) * X[:, j]
+                    z += self.learning_rate[j] * self.trees[j][k].predict(X) * X[:, j]
 
         # Re-adjust the initial parameter values
         if glm_init:
             self.z0, self.beta0 = self.distribution.glm(X=X, y=y, z=z)
         else:
             self.z0 = self.distribution.mle(y=y, z=z)
-
-    def update(
-        self,
-        X: np.ndarray,
-        y: np.ndarray,
-        j: int,
-        z: Optional[np.ndarray] = None,
-    ) -> None:
-        """
-        Updates the current boosting model with one additional tree
-
-        :param X: The training input data, shape (n_samples, n_features).
-        :param y: The target values for the training data.
-        :param j: Coefficient  to update
-        :param z: The current predictions of the model. If None, the predictions are computed from the current model.
-        """
-        if z is None:
-            z = self.predict(X)
-        self.trees[j].append(
-            LocalBoostingTree(
-                max_depth=self.max_depth[j],
-                min_samples_leaf=self.min_samples_leaf[j],
-                distribution=self.distribution,
-            )
-        )
-        self.trees[j][-1].fit_gradients(X=X, y=y, z=z, j=j)
-        self.kappa[j] += 1
 
     def _adjust_hyperparameters(self) -> None:
         """Adjust hyperparameters given the new covariate dimensions."""
@@ -125,8 +103,42 @@ class LocalGLMBooster:
             else:
                 setattr(self, param, [param_value] * self.p)
 
-        for param in ["kappa", "eps", "max_depth", "min_samples_leaf"]:
+        for param in [
+            "n_estimators",
+            "learning_rate",
+            "min_samples_split",
+            "min_samples_leaf",
+            "max_depth",
+        ]:
             adjust_param(param)
+
+    def add_tree(
+        self,
+        X: np.ndarray,
+        y: np.ndarray,
+        j: int,
+        z: Optional[np.ndarray] = None,
+    ) -> None:
+        """
+        Updates the current boosting model with one additional tree to the jth coefficient.
+
+        :param X: The training input data, shape (n_samples, n_features).
+        :param y: The target values for the training data.
+        :param j: Coefficient  to update
+        :param z: The current predictions of the model. If None, the predictions are computed from the current model.
+        """
+        if z is None:
+            z = self.predict(X)
+        self.trees[j].append(
+            LocalBoostingTree(
+                distribution=self.distribution,
+                max_depth=self.max_depth[j],
+                min_samples_split=self.min_samples_split[j],
+                min_samples_leaf=self.min_samples_leaf[j],
+            )
+        )
+        self.trees[j][-1].fit_gradients(X=X, y=y, z=z, j=j)
+        self.n_estimators[j] += 1
 
     def predict_parameter(
         self,
@@ -142,11 +154,11 @@ class LocalGLMBooster:
             [
                 sum(
                     [
-                        self.eps[j] * self.trees[j][k].predict(X)
-                        for k in range(self.kappa[j])
+                        self.learning_rate[j] * self.trees[j][k].predict(X)
+                        for k in range(self.n_estimators[j])
                     ]
                 )
-                if self.kappa[j] > 0
+                if self.n_estimators[j] > 0
                 else np.zeros(X.shape[0])
                 for j in range(self.p)
             ]
@@ -165,11 +177,12 @@ class LocalGLMBooster:
         beta = self.predict_parameter(X=X)
         return self.z0 + np.sum(beta.T * X, axis=1)
 
-    def feature_importances(
+    def compute_feature_importances(
         self, j: Union[str, int] = "all", normalize: bool = True
     ) -> np.ndarray:
         """
-        Computes the feature importances for parameter dimension j
+        Computes the feature importance for parameter all features for dimension j
+        If j is 'all', the feature importance is calculated over all parameter dimensions.
         Note that the feature importance is calculated for regression attentions beta_j(x) meaning that the GLM parameters are not taken into account.
 
         :param j: Parameter dimension. If 'all', calculate importance over all parameter dimensions.
@@ -180,7 +193,10 @@ class LocalGLMBooster:
                 (
                     np.array(
                         [
-                            [tree.feature_importances() for tree in self.trees[j]]
+                            [
+                                tree.compute_feature_importances()
+                                for tree in self.trees[j]
+                            ]
                             for j in range(self.p)
                         ]
                     ).sum(axis=(0, 1))
@@ -190,9 +206,9 @@ class LocalGLMBooster:
             )
         else:
             feature_importances = (
-                np.array([tree.feature_importances() for tree in self.trees[j]]).sum(
-                    axis=0
-                )
+                np.array(
+                    [tree.compute_feature_importances() for tree in self.trees[j]]
+                ).sum(axis=0)
                 if len(self.trees[j]) > 0
                 else np.zeros(self.p)
             )
@@ -200,85 +216,3 @@ class LocalGLMBooster:
             feature_importances /= feature_importances.sum()
 
         return feature_importances
-
-
-if __name__ == "__main__":
-    from local_glm_boost.utils.tuning import tune_kappa
-    from local_glm_boost.utils.logger import LocalGLMBoostLogger
-
-    n = 20000
-    p = 3
-    rng = np.random.default_rng(0)
-    cov = np.eye(p)
-    # cov[1, 7] = cov[7, 1] = 0.5
-    X = rng.multivariate_normal(np.zeros(p), cov, size=n)
-    z0 = 0
-
-    betas = [[]] * p
-    betas[0] = 0.5 * np.ones(n)
-    betas[1] = -0.5 * X[:, 1]
-    betas[2] = np.sin(2 * X[:, 0])
-    # betas[3] = 0.5 * X[:, 4]
-    # betas[4] = (1 / 8) * X[:, 5] ** 2
-    # betas[5] = np.zeros(n)
-    # betas[6] = np.zeros(n)
-    # betas[7] = np.zeros(n)
-    beta = np.stack(betas, axis=1).T
-
-    mu = z0 + np.sum(beta.T * X, axis=1)
-    y = rng.normal(mu, 1)
-
-    idx = np.arange(n)
-    rng.shuffle(idx)
-    idx_train, idx_test = idx[: int(0.5 * n)], idx[int(0.5 * n) :]
-    X_train, y_train, mu_train = X[idx_train], y[idx_train], mu[idx_train]
-    X_test, y_test, mu_test = X[idx_test], y[idx_test], mu[idx_test]
-
-    max_depth = 2
-    min_samples_leaf = 10
-    distribution = "normal"
-    kappa_max = 100
-    eps = 0.1
-
-    logger = LocalGLMBoostLogger(verbose=2)
-
-    tuning_results = tune_kappa(
-        X=X_train,
-        y=y_train,
-        max_depth=max_depth,
-        min_samples_leaf=min_samples_leaf,
-        distribution=distribution,
-        kappa_max=kappa_max,
-        eps=eps,
-        n_splits=2,
-        random_state=2,
-        logger=logger,
-    )
-
-    kappa_opt = tuning_results["kappa"]
-
-    for j in range(p):
-        print(f"Optimal kappa for covariate {j}: {kappa_opt[j]}")
-
-    model = LocalGLMBooster(
-        kappa=kappa_opt,
-        eps=eps,
-        max_depth=max_depth,
-        min_samples_leaf=min_samples_leaf,
-        distribution="normal",
-    )
-    model.fit(X, y, glm_init=True)
-
-    print(f"True MSE: {np.mean((y_test-mu_test)**2)}")
-    print(f"Intercept MSE: {np.mean((y_test-y_train.mean())**2)}")
-    print(f"GLM MSE: {np.mean((y_test-model.z0 - model.beta0.T @ X_test.T)**2)}")
-    print(f"Model MSE: {np.mean((y_test-model.predict(X_test))**2)}")
-
-    feature_importances = [
-        model.feature_importances(j=j, normalize=True) for j in range(p)
-    ]
-    for j in range(p):
-        for k in range(p):
-            print(
-                f"Feature importance for covariate {k} on beta_{j}: {feature_importances[k][j]}"
-            )

@@ -34,35 +34,22 @@ def _fold_split(
     return folds
 
 
-def tune_kappa(
+def tune_n_estimators(
     X: np.ndarray,
     y: np.ndarray,
-    kappa_max: Union[int, List[int]] = 1000,
-    eps: Union[float, List[float]] = 0.1,
-    max_depth: Union[int, List[int]] = 2,
-    min_samples_leaf: Union[int, List[int]] = 20,
     distribution: Union[str, Distribution] = "normal",
+    learning_rate: Union[float, List[float]] = 0.1,
+    n_estimators_max: Union[int, List[int]] = 1000,
+    min_samples_split: Union[int, List[int]] = 2,
+    min_samples_leaf: Union[int, List[int]] = 20,
+    max_depth: Union[int, List[int]] = 2,
     n_splits: int = 4,
     random_state: Optional[int] = None,
     rng: Optional[np.random.Generator] = None,
     logger: Optional[LocalGLMBoostLogger] = None,
 ) -> Dict[str, Union[List[int], np.ndarray]]:
-    """Tunes the kappa parameter of a CycGBM model using k-fold cross-validation.
+    """Tunes the kappa parameter of a CycGBM model using k-fold cross-validation."""
 
-    :param X: The input data matrix of shape (n_samples, n_features).
-    :param y: The target vector of shape (n_samples,).
-    :param kappa_max: The maximum value of the kappa parameter to test. Dimension-wise or same for all parameter dimensions.
-    :param eps: The epsilon parameters for the CycGBM model.Dimension-wise or same for all parameter dimensions.
-    :param max_depth: The maximum depth of the decision trees in the GBM model. Dimension-wise or same for all parameter dimensions.
-    :param min_samples_leaf: The minimum number of samples required to be at a leaf node in the CycGBM model. Dimension-wise or same for all parameter dimensions.
-    :param distribution: The distribution of the target variable.
-    :param n_splits: The number of folds to use for k-fold cross-validation.
-    :param random_state: The random state to use for the k-fold split.
-    :param rng: The random number generator.
-    :return: A dictionary containing the following keys:
-        - "kappa": The optimal kappa parameter value for each parameter dimension.
-        - "loss": The loss values for each kappa parameter value.
-    """
     if logger is None:
         logger = LocalGLMBoostLogger(verbose=0)
     if rng is None:
@@ -71,11 +58,13 @@ def tune_kappa(
     if isinstance(distribution, str):
         distribution = initiate_distribution(distribution=distribution)
     p = X.shape[1]
-    kappa_max = kappa_max if isinstance(kappa_max, list) else [kappa_max] * p
-    loss = {
-        "train": np.ones((n_splits, max(kappa_max) + 1, p)) * np.nan,
-        "valid": np.ones((n_splits, max(kappa_max) + 1, p)) * np.nan,
-    }
+    n_estimators_max = (
+        n_estimators_max
+        if isinstance(n_estimators_max, list)
+        else [n_estimators_max] * p
+    )
+    loss_train = np.ones((n_splits, max(n_estimators_max) + 1, p)) * np.nan
+    loss_valid = np.ones((n_splits, max(n_estimators_max) + 1, p)) * np.nan
     for i, idx in enumerate(folds):
         logger.append_format_level(f"fold {i+1}/{n_splits}")
         logger.log("tuning", verbose=1)
@@ -85,118 +74,84 @@ def tune_kappa(
         X_valid, y_valid = X[idx_valid], y[idx_valid]
 
         model = LocalGLMBooster(
-            kappa=0,
-            eps=eps,
-            max_depth=max_depth,
-            min_samples_leaf=min_samples_leaf,
             distribution=distribution,
+            learning_rate=learning_rate,
+            n_estimators=0,
+            min_samples_split=min_samples_split,
+            min_samples_leaf=min_samples_leaf,
+            max_depth=max_depth,
         )
         model.fit(X_train, y_train, glm_init=True)
         z_train = model.predict(X_train)
         z_valid = model.predict(X_valid)
-        loss["train"][i, 0, :] = model.distribution.loss(y=y_train, z=z_train).sum()
-        loss["valid"][i, 0, :] = model.distribution.loss(y=y_valid, z=z_valid).sum()
+        loss_train[i, 0, :] = model.distribution.loss(y=y_train, z=z_train).sum()
+        loss_valid[i, 0, :] = model.distribution.loss(y=y_valid, z=z_valid).sum()
 
-        for k in range(1, max(kappa_max) + 1):
+        for k in range(1, max(n_estimators_max) + 1):
             for j in range(p):
-                if k < kappa_max[j]:
-                    model.update(X=X_train, y=y_train, j=j, z=z_train)
+                if k < n_estimators_max[j]:
+                    model.add_tree(X=X_train, y=y_train, j=j, z=z_train)
                     z_train += (
-                        model.eps[j]
+                        model.learning_rate[j]
                         * model.trees[j][-1].predict(X_train)
                         * X_train[:, j]
                     )
                     z_valid += (
-                        model.eps[j]
+                        model.learning_rate[j]
                         * model.trees[j][-1].predict(X_valid)
                         * X_valid[:, j]
                     )
 
-                    loss["train"][i, k, j] = model.distribution.loss(
+                    loss_train[i, k, j] = model.distribution.loss(
                         y=y_train, z=z_train
                     ).sum()
-                    loss["valid"][i, k, j] = model.distribution.loss(
+                    loss_valid[i, k, j] = model.distribution.loss(
                         y=y_valid, z=z_valid
                     ).sum()
                 else:
                     if j == 0:
-                        loss["train"][i, k, j] = loss["train"][i, k - 1, j + 1]
-                        loss["valid"][i, k, j] = loss["valid"][i, k - 1, j + 1]
+                        loss_train[i, k, j] = loss_train[i, k - 1, j + 1]
+                        loss_valid[i, k, j] = loss_valid[i, k - 1, j + 1]
                     else:
-                        loss["train"][i, k, j] = loss["train"][i, k, j - 1]
-                        loss["valid"][i, k, j] = loss["valid"][i, k, j - 1]
+                        loss_train[i, k, j] = loss_train[i, k, j - 1]
+                        loss_valid[i, k, j] = loss_valid[i, k, j - 1]
 
             # Stop if no improvement was made
-            if k != max(kappa_max) and np.all(
-                [loss["valid"][i, k, 0] >= loss["valid"][i, k - 1, 1]]
-                + [
-                    loss["valid"][i, k, j] >= loss["valid"][i, k, j - 1]
-                    for j in range(1, p)
-                ]
+            if k != max(n_estimators_max) and np.all(
+                [loss_valid[i, k, 0] >= loss_valid[i, k - 1, 1]]
+                + [loss_valid[i, k, j] >= loss_valid[i, k, j - 1] for j in range(1, p)]
             ):
-                loss["valid"][i, k + 1 :, :] = loss["valid"][i, k, -1]
+                loss_valid[i, k + 1 :, :] = loss_valid[i, k, -1]
                 logger.log(
                     msg=f"tuning converged after {k} steps",
                     verbose=1,
                 )
                 break
 
-            if k == max(kappa_max):
+            if k == max(n_estimators_max):
                 logger.log(
                     msg="tuning did not converge",
                     verbose=1,
                 )
-            logger.log_progress(step=k, total_steps=max(kappa_max) + 1, verbose=2)
+            logger.log_progress(
+                step=k, total_steps=max(n_estimators_max) + 1, verbose=2
+            )
         logger.reset_progress()
         logger.remove_format_level()
 
-    loss_total = loss["valid"].sum(axis=0)
-    loss_delta = np.zeros((p, max(kappa_max) + 1))
+    loss_total = loss_valid.sum(axis=0)
+    loss_delta = np.zeros((p, max(n_estimators_max) + 1))
     loss_delta[0, 1:] = loss_total[1:, 0] - loss_total[:-1, -1]
     for j in range(1, p):
         loss_delta[j, 1:] = loss_total[1:, j] - loss_total[1:, j - 1]
-    kappa = np.maximum(0, np.argmax(loss_delta > 0, axis=1) - 1)
+    n_estimators = np.maximum(0, np.argmax(loss_delta > 0, axis=1) - 1)
     did_not_converge = (loss_delta > 0).sum(axis=1) == 0
     for j in range(p):
-        if did_not_converge[j] and kappa_max[j] > 0:
-            logger.log(f"tuning did not converge for dimension {j}", verbose=1)
-            kappa[j] = kappa_max[j]
+        if did_not_converge[j] and n_estimators_max[j] > 0:
+            logger.log(f"tuning did not converge for coefficient {j}", verbose=1)
+            n_estimators[j] = n_estimators_max[j]
 
-    return {"kappa": kappa, "loss": loss}
-
-
-if __name__ == "__main__":
-    n = 10000
-    p = 2
-    rng = np.random.default_rng(0)
-    X = rng.normal(size=(n, p))
-    z0 = 0
-    beta0 = np.sin(5 * X[:, 1])
-    beta1 = X[:, 0]
-    beta = np.stack([beta0, beta1], axis=1).T
-
-    mu = z0 + np.sum(beta.T * X, axis=1)
-    y = rng.normal(mu, 0.1)
-
-    kappa_max = 300
-    eps = [0.1, 0.01]
-    max_depth = 2
-    min_samples_leaf = 20
-    distribution = "normal"
-    n_splits = 4
-    random_state = 0
-
-    tuning_results = tune_kappa(
-        X=X,
-        y=y,
-        kappa_max=kappa_max,
-        eps=eps,
-        max_depth=max_depth,
-        min_samples_leaf=min_samples_leaf,
-        distribution=distribution,
-        n_splits=n_splits,
-        random_state=random_state,
-    )
-
-    for j in range(p):
-        print(f"optimal kappa for coefficient {j}: {tuning_results['kappa'][j]}")
+    return {
+        "n_estimators": n_estimators,
+        "loss": {"train": loss_train, "valid": loss_valid},
+    }

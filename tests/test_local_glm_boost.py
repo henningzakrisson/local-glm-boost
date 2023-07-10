@@ -3,8 +3,7 @@ import unittest
 import numpy as np
 
 from local_glm_boost import LocalGLMBooster
-from local_glm_boost.utils.tuning import tune_kappa
-from local_glm_boost.utils.distributions import initiate_distribution
+from local_glm_boost.utils.tuning import tune_n_estimators
 
 
 class LocalGLMBoosterTestCase(unittest.TestCase):
@@ -35,7 +34,13 @@ class LocalGLMBoosterTestCase(unittest.TestCase):
         Test the loss results on a normal distribution
         """
         y = self.rng.normal(self.z, 1)
-        model = LocalGLMBooster(distribution="normal", eps=0.1, kappa=[50, 40])
+        model = LocalGLMBooster(
+            distribution="normal",
+            n_estimators=[50, 40],
+            learning_rate=0.1,
+            min_samples_leaf=20,
+            max_depth=2,
+        )
         model.fit(X=self.X, y=y)
 
         self.assertAlmostEqual(
@@ -49,22 +54,24 @@ class LocalGLMBoosterTestCase(unittest.TestCase):
         Test the tuning of the number of estimators
         """
         y = self.rng.normal(self.z, 1)
-        tuning_results = tune_kappa(
+        tuning_results = tune_n_estimators(
             X=self.X,
             y=y,
             distribution="normal",
-            eps=0.1,
-            kappa_max=50,
+            learning_rate=0.1,
+            n_estimators_max=50,
             rng=self.rng,
             n_splits=2,
+            min_samples_leaf=20,
+            max_depth=2,
         )
-        kappa_opt = tuning_results["kappa"]
-        kappa_expected = [50, 40]
-        for i, kappa in enumerate(kappa_expected):
+        n_estimators = tuning_results["n_estimators"]
+        n_estimators_expected = [50, 40]
+        for i, kappa in enumerate(n_estimators_expected):
             self.assertEqual(
-                kappa_opt[i],
-                kappa,
-                msg=f"Optimal kappa for normal distribution not as expected for dimension {i}",
+                n_estimators_expected[i],
+                n_estimators[i],
+                msg=f"Optimal n_estimators for normal distribution not as expected for dimension {i}",
             )
 
     def test_normal_feature_importance(self):
@@ -72,10 +79,16 @@ class LocalGLMBoosterTestCase(unittest.TestCase):
         Test the feature importance calculation
         """
         y = self.rng.normal(self.z, 1)
-        model = LocalGLMBooster(distribution="normal", eps=0.1, kappa=[19, 30])
+        model = LocalGLMBooster(
+            distribution="normal",
+            learning_rate=0.1,
+            min_samples_leaf=20,
+            max_depth=2,
+            n_estimators=[19, 30],
+        )
         model.fit(X=self.X, y=y)
         feature_importances = {
-            j: model.feature_importances(j) for j in range(self.X.shape[1])
+            j: model.compute_feature_importances(j) for j in range(self.X.shape[1])
         }
         expected_feature_importances = {0: [1, 0], 1: [0, 1]}
         for i in range(self.X.shape[1]):

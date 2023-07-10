@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 
 from local_glm_boost.local_glm_boost import LocalGLMBooster
-from local_glm_boost.utils.tuning import tune_kappa
+from local_glm_boost.utils.tuning import tune_n_estimators
 from local_glm_boost.utils.logger import LocalGLMBoostLogger
 
 script_dir = os.path.dirname(os.path.realpath(__file__))
@@ -18,7 +18,7 @@ logger = LocalGLMBoostLogger(
 
 logger.log("Simulating data...")
 # Set up simulation metadata
-n = 20000
+n = 2000
 p = 8
 rng = np.random.default_rng(0)
 cov = np.eye(p)
@@ -58,37 +58,37 @@ X_test, y_test, mu_test, beta_test = (
     beta[:, idx_test],
 )
 
-logger.log("Tuning kappa...")
+logger.log("Tuning model...")
 max_depth = 2
 min_samples_leaf = 10
 distribution = "normal"
-kappa_max = 3000
-eps = 0.01
+n_estimators_max = 3000
+learning_rate = 0.01
 n_splits = 2
 
-tuning_results = tune_kappa(
+tuning_results = tune_n_estimators(
     X=X_train,
     y=y_train,
     max_depth=max_depth,
     min_samples_leaf=min_samples_leaf,
     distribution=distribution,
-    kappa_max=kappa_max,
-    eps=eps,
+    n_estimators_max=n_estimators_max,
+    learning_rate=learning_rate,
     n_splits=n_splits,
     rng=rng,
     logger=logger,
 )
 
-kappa_opt = tuning_results["kappa"]
+n_estimators = tuning_results["n_estimators"]
 
 for j in range(p):
-    logger.log(f"Optimal kappa for covariate {j}: {kappa_opt[j]}")
+    logger.log(f"Optimal n_estimators for covariate {j}: {n_estimators[j]}")
 
 # Evaluate performance
 logger.log("Fitting models...")
 model = LocalGLMBooster(
-    kappa=kappa_opt,
-    eps=eps,
+    n_estimators=n_estimators,
+    learning_rate=learning_rate,
     max_depth=max_depth,
     min_samples_leaf=min_samples_leaf,
     distribution="normal",
@@ -135,10 +135,10 @@ for model_name in mu_hat.keys():
 
 logger.log("Calculating feature importance...")
 feature_importance = pd.DataFrame(
-    index=[j for j in range(p) if kappa_opt[j] > 0], columns=range(p), dtype=float
+    index=[j for j in range(p) if n_estimators[j] > 0], columns=range(p), dtype=float
 )
 for j in feature_importance.index:
-    feature_importance.loc[j] = model.feature_importances(j=j, normalize=True)
+    feature_importance.loc[j] = model.compute_feature_importances(j=j, normalize=True)
 
 feature_importance.index = [f"beta_{j}" for j in feature_importance.index]
 feature_importance.columns = [f"x_{j}" for j in feature_importance.columns]
@@ -151,7 +151,7 @@ for data_set in ["train", "valid"]:
         f"{output_path}/tuning_loss_{data_set}.csv"
     )
 
-pd.DataFrame(kappa_opt).to_csv(f"{output_path}/kappa_opt.csv")
+pd.DataFrame(n_estimators).to_csv(f"{output_path}/n_estimators.csv")
 pd.DataFrame(model.beta0).to_csv(f"{output_path}/beta0.csv")
 
 feature_importance.to_csv(f"{output_path}/feature_importance.csv")

@@ -14,16 +14,18 @@ class LocalBoostingTree(DecisionTreeRegressor):
 
     def __init__(
         self,
-        max_depth: int,
-        min_samples_leaf: int,
         distribution: Distribution,
+        max_depth: int,
+        min_samples_split: int,
+        min_samples_leaf: int,
     ):
         """
         Constructs a new GBMTree instance.
 
-        :param max_depth: The maximum depth of the tree.
-        :param min_samples_leaf: The minimum number of samples required to be at a leaf node.
         :param distribution: The distribution of the response variable.
+        :param max_depth: The maximum depth of the tree.
+        :param min_samples_split: The minimum number of samples required to split an internal node.
+        :param min_samples_leaf: The minimum number of samples required to be at a leaf node.
         """
         super().__init__(max_depth=max_depth, min_samples_leaf=min_samples_leaf)
         self.distribution = distribution
@@ -99,7 +101,7 @@ class LocalBoostingTree(DecisionTreeRegressor):
             node_index=child_right,
         )
 
-    def feature_importances(self) -> np.ndarray:
+    def compute_feature_importances(self) -> np.ndarray:
         """
         Returns the feature importances of the tree.
 

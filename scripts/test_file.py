@@ -1,7 +1,7 @@
 import numpy as np
 from local_glm_boost import LocalGLMBooster
 
-n = 20000
+n = 2000
 p = 3
 rng = np.random.default_rng(0)
 cov = np.eye(p)
@@ -33,16 +33,13 @@ max_depth = 2
 min_samples_leaf = 10
 distribution = "normal"
 kappa_max = 100
-eps = 0.1
+learning_rate = 0.1
 
-kappa_opt = [10] * p
-
-for j in range(p):
-    print(f"Optimal kappa for covariate {j}: {kappa_opt[j]}")
+n_estimators = [10] * p
 
 model = LocalGLMBooster(
-    kappa=kappa_opt,
-    eps=eps,
+    n_estimators=n_estimators,
+    learning_rate=learning_rate,
     max_depth=max_depth,
     min_samples_leaf=min_samples_leaf,
     distribution="normal",
@@ -54,7 +51,9 @@ print(f"Intercept MSE: {np.mean((y_test-y_train.mean())**2)}")
 print(f"GLM MSE: {np.mean((y_test-model.z0 - model.beta0.T @ X_test.T)**2)}")
 print(f"Model MSE: {np.mean((y_test-model.predict(X_test))**2)}")
 
-feature_importances = [model.feature_importances(j=j, normalize=True) for j in range(p)]
+feature_importances = [
+    model.compute_feature_importances(j=j, normalize=True) for j in range(p)
+]
 for j in range(p):
     for k in range(p):
         print(
