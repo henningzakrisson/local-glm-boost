@@ -1,9 +1,9 @@
 from typing import Union, List, Dict, Tuple, Optional
+from joblib import Parallel, delayed
 
 import numpy as np
 
 from local_glm_boost.local_glm_boost import LocalGLMBooster
-from local_glm_boost.utils.distributions import initiate_distribution, Distribution
 from .logger import LocalGLMBoostLogger
 
 
@@ -16,6 +16,8 @@ def tune_n_estimators(
     rng: Optional[np.random.Generator] = None,
     random_state: Optional[int] = None,
     logger: Optional[LocalGLMBoostLogger] = None,
+    parallel: bool = True,
+    n_jobs: int = -1,
 ) -> Dict[str, Union[List[int], Dict[str, np.ndarray]]]:
     """Tunes the kappa parameter of a CycGBM model using k-fold cross-validation.
 
@@ -26,6 +28,9 @@ def tune_n_estimators(
     :param n_splits: The number of folds to use for k-fold cross-validation.
     :param rng: The random number generator.
     :param random_state: The random state. Only used if rng is None.
+    :param logger: The simulation logger to use for logging.
+    :param parallel: Whether to use parallel processing for the cross-validation.
+    :param n_jobs: The number of jobs to use for parallel processing. Default is -1, which uses all available cores.
     """
     logger = LocalGLMBoostLogger(verbose=-1) if logger is None else logger
     rng = np.random.default_rng(random_state) if rng is None else rng
@@ -40,16 +45,26 @@ def tune_n_estimators(
     folds = _fold_split(X=X, y=y, n_splits=n_splits, rng=rng)
 
     logger.log(f"performing cross-validation on {n_splits} folds")
-    results = []
-    for i in folds:
-        logger.log(f"fold {i+1}/{n_splits}")
-        results.append(
-            _evaluate_fold(
+    if parallel:
+        results = Parallel(n_jobs=n_jobs)(
+            delayed(_evaluate_fold)(
                 fold=folds[i],
                 model=model,
                 n_estimators_max=n_estimators_max,
             )
+            for i in folds
         )
+    else:
+        results = []
+        for i in folds:
+            logger.log(f"fold {i+1}/{n_splits}")
+            results.append(
+                _evaluate_fold(
+                    fold=folds[i],
+                    model=model,
+                    n_estimators_max=n_estimators_max,
+                )
+            )
 
     loss = {
         "train": [result[0] for result in results],
