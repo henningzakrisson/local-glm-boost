@@ -1,0 +1,17 @@
+[2023-07-10 20:49][run_7][Simulating data...]
+[2023-07-10 20:49][run_7][Tuning model...]
+[2023-07-10 20:49][run_7][fold 1/2][tuning]
+Traceback (most recent call last):
+  File "scripts/simulation_study/simulation_study.py", line 96, in <module>
+    logger=logger,
+  File "/home/heza7322/PycharmProjects/local-glm-boost/local_glm_boost/utils/tuning.py", line 95, in tune_n_estimators
+    model.add_tree(X=X_train, y=y_train, j=j, z=z_train)
+  File "/home/heza7322/PycharmProjects/local-glm-boost/local_glm_boost/local_glm_boost.py", line 188, in add_tree
+    self.trees[j][-1].fit_gradients(X=X, y=y, z=z, j=j, features=self.features[j])
+  File "/home/heza7322/PycharmProjects/local-glm-boost/local_glm_boost/boosting_tree.py", line 58, in fit_gradients
+    self.fit(X[:, features], -g)
+  File "/home/heza7322/anaconda3/lib/python3.7/site-packages/sklearn/tree/_classes.py", line 1320, in fit
+    X_idx_sorted=X_idx_sorted,
+  File "/home/heza7322/anaconda3/lib/python3.7/site-packages/sklearn/tree/_classes.py", line 420, in fit
+    builder.build(self.tree_, X, y, sample_weight)
+KeyboardInterrupt
