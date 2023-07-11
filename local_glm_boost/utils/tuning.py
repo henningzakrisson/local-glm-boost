@@ -43,13 +43,30 @@ def tune_n_estimators(
     min_samples_split: Union[int, List[int]] = 2,
     min_samples_leaf: Union[int, List[int]] = 20,
     max_depth: Union[int, List[int]] = 2,
-    glm_init: bool = True,
+    features: Optional[Dict[Union[str, int], List[Union[str, int]]]] = None,
+    glm_init: Union[List[bool], bool] = True,
     n_splits: int = 4,
     random_state: Optional[int] = None,
     rng: Optional[np.random.Generator] = None,
     logger: Optional[LocalGLMBoostLogger] = None,
 ) -> Dict[str, Union[List[int], Dict[str, np.ndarray]]]:
-    """Tunes the kappa parameter of a CycGBM model using k-fold cross-validation."""
+    """Tunes the kappa parameter of a CycGBM model using k-fold cross-validation.
+
+    :param X: The input data matrix of shape (n_samples, n_features).
+    :param y: The target values of shape (n_samples,).
+    :param distribution: The distribution of the target variable.
+    :param learning_rate: The learning rate of the model.
+    :param n_estimators_max: The maximum number of estimators to use.
+    :param min_samples_split: The minimum number of samples required to split an internal node.
+    :param min_samples_leaf: The minimum number of samples required to be at a leaf node.
+    :param max_depth: The maximum depth of the tree.
+    :param features: The features to use for each estimator.
+    :param glm_init: Whether to initialize the model with a GLM.
+    :param n_splits: The number of folds to use for k-fold cross-validation.
+    :param random_state: The seed used by the random number generator.
+    :param rng: The random number generator.
+    :param logger: The logger to use.
+    """
 
     if logger is None:
         logger = LocalGLMBoostLogger(verbose=0)
@@ -84,7 +101,7 @@ def tune_n_estimators(
             max_depth=max_depth,
             glm_init=glm_init,
         )
-        model.fit(X_train, y_train)
+        model.fit(X_train, y_train, features=features)
         z_train = model.predict(X_train)
         z_valid = model.predict(X_valid)
         loss_train[i, 0, :] = model.distribution.loss(y=y_train, z=z_train).sum()
