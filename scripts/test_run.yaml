@@ -19,3 +19,5 @@ glm_init: true
 
 test_size: 0.5
 n_splits: 2
+parallel: true
+n_jobs: -1
