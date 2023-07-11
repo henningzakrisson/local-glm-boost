@@ -276,3 +276,18 @@ class LocalGLMBooster:
                 feature_importances, index=self.feature_names
             )
         return feature_importances
+
+    def reset(self, n_estimators: Optional[Union[int, List[int]]] = None) -> None:
+        """
+        Resets the model to the initial state.
+        If n_estimators is not None, the number of trees in each dimension is reset to the specified value.
+
+        :param n_estimators: Number of trees in each dimension.
+        """
+        if n_estimators is not None:
+            self.n_estimators = n_estimators
+
+        self.trees = None
+        self.z0 = None
+        self.beta0 = None
+        self.feature_names = None

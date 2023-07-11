@@ -55,16 +55,19 @@ class LocalGLMBoosterTestCase(unittest.TestCase):
         Test the tuning of the number of estimators
         """
         y = self.rng.normal(self.z, 1)
+        model = LocalGLMBooster(
+            distribution="normal",
+            learning_rate=0.1,
+            min_samples_leaf=20,
+            max_depth=2,
+        )
         tuning_results = tune_n_estimators(
             X=self.X,
             y=y,
-            distribution="normal",
-            learning_rate=0.1,
+            model=model,
             n_estimators_max=50,
             rng=self.rng,
             n_splits=2,
-            min_samples_leaf=20,
-            max_depth=2,
         )
         n_estimators = tuning_results["n_estimators"]
         n_estimators_expected = [50, 37]
