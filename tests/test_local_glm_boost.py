@@ -153,10 +153,8 @@ class LocalGLMBoosterTestCase(unittest.TestCase):
         Test the feature selection support
         """
         y = self.rng.normal(self.z, 1)
-        model = LocalGLMBooster(
-            distribution="normal",
-        )
-        model.fit(X=self.X, y=y, features={0: [0], 1: [0]})
+        model = LocalGLMBooster(distribution="normal", features={0: [0], 1: [0]})
+        model.fit(X=self.X, y=y)
         feature_importances = {
             j: model.compute_feature_importances(j) for j in range(self.X.shape[1])
         }
@@ -174,9 +172,9 @@ class LocalGLMBoosterTestCase(unittest.TestCase):
         y = pd.Series(self.rng.normal(self.z, 1))
         X = pd.DataFrame(self.X, columns=["a", "b"])
         model = LocalGLMBooster(
-            distribution="normal",
+            distribution="normal", features={"a": ["a"], "b": ["a"]}
         )
-        model.fit(X=X, y=y, features={"a": ["a"], "b": ["a"]})
+        model.fit(X=X, y=y)
         feature_importances = {
             coefficient: model.compute_feature_importances(coefficient)
             for coefficient in X.columns

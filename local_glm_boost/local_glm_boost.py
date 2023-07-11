@@ -19,6 +19,7 @@ class LocalGLMBooster:
         min_samples_leaf: Union[List[int], int] = 1,
         max_depth: Union[List[int], int] = 3,
         glm_init: Union[List[bool], bool] = True,
+        features: Optional[Dict[Union[str, int], List[Union[str, int]]]] = None,
     ):
         """
         Initialize a LocalGLMBooster model.
@@ -30,6 +31,7 @@ class LocalGLMBooster:
         :param min_samples_leaf: Minimum number of samples required at a leaf node. Dimension-wise or global for all coefficients.
         :param max_depth: Maximum depths of each decision tree. Dimension-wise or global for all coefficients.
         :param glm_init: Whether to initialize the model with a GLM fit.
+        :param features: Features to use for each coefficient. A dictionary with the coefficient name or number as key and a list of feature names or numbers as value.
         """
         self.n_estimators = n_estimators
         self.learning_rate = learning_rate
@@ -37,6 +39,7 @@ class LocalGLMBooster:
         self.min_samples_leaf = min_samples_leaf
         self.max_depth = max_depth
         self.glm_init = glm_init
+        self.features = features
 
         if isinstance(distribution, str):
             self.distribution = initiate_distribution(distribution)
@@ -48,51 +51,24 @@ class LocalGLMBooster:
         self.z0 = None
         self.trees = None
         self.feature_names = None
-        self.features = None
 
     def fit(
         self,
         X: np.ndarray,
         y: np.ndarray,
-        features: Optional[Dict[Union[str, int], List[Union[str, int]]]] = None,
     ):
         """
         Fit the model to the data.
 
         :param X: Input data matrix of shape (n, p).
         :param y: True response values for the input data of shape (n,).
-        :param features: A dictionary of features to be used for each covariate. If None, all covariates are used.
         """
-        if isinstance(X, pd.DataFrame):
-            self.feature_names = X.columns
-            if features is not None:
-                self.features = {
-                    X.columns.get_loc(coefficient): [
-                        X.columns.get_loc(feature) for feature in features[coefficient]
-                    ]
-                    for coefficient in X.columns
-                }
+        self._adjust_feature_selection(X=X)
         X, y = fix_datatype(X=X, y=y)
         self.p = X.shape[1]
-        if features is None:
-            self.features = {j: list(range(X.shape[1])) for j in range(self.p)}
-        elif self.features is None:
-            self.features = features
-
         self._adjust_hyperparameters()
         self.z0, self.beta0 = self.adjust_initializer(X=X, y=y)
-        self.trees = [
-            [
-                LocalBoostingTree(
-                    distribution=self.distribution,
-                    max_depth=self.max_depth[j],
-                    min_samples_split=self.min_samples_split[j],
-                    min_samples_leaf=self.min_samples_leaf[j],
-                )
-                for _ in range(self.n_estimators[j])
-            ]
-            for j in range(self.p)
-        ]
+        self._initiate_trees()
 
         z = self.z0 + (self.beta0.T @ X.T).T.reshape(-1)
 
@@ -110,6 +86,43 @@ class LocalGLMBooster:
 
         # Re-adjust the initial parameter values
         self.z0, self.beta0 = self.adjust_initializer(X=X, y=y)
+
+    def _adjust_feature_selection(self, X: Union[pd.DataFrame, np.ndarray]) -> None:
+        """Adjust keys for the features selection and save feature names.
+
+        :param X: Input data matrix or dataframe of shape (n, p).
+        """
+        if isinstance(X, pd.DataFrame):
+            self.feature_names = X.columns
+            if self.features is not None:
+                self.features = {
+                    X.columns.get_loc(coefficient): [
+                        X.columns.get_loc(feature)
+                        for feature in self.features[coefficient]
+                    ]
+                    for coefficient in X.columns
+                }
+            else:
+                self.features = {
+                    j: list(range(X.shape[1])) for j in range(len(X.columns))
+                }
+        elif self.features is None:
+            self.features = {j: list(range(X.shape[1])) for j in range(X.shape[1])}
+
+    def _initiate_trees(self):
+        """Initiate the trees."""
+        self.trees = [
+            [
+                LocalBoostingTree(
+                    distribution=self.distribution,
+                    max_depth=self.max_depth[j],
+                    min_samples_split=self.min_samples_split[j],
+                    min_samples_leaf=self.min_samples_leaf[j],
+                )
+                for _ in range(self.n_estimators[j])
+            ]
+            for j in range(self.p)
+        ]
 
     def _adjust_hyperparameters(self) -> None:
         """Adjust hyperparameters given the new covariate dimensions."""

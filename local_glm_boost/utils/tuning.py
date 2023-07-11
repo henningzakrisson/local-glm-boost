@@ -100,8 +100,9 @@ def tune_n_estimators(
             min_samples_leaf=min_samples_leaf,
             max_depth=max_depth,
             glm_init=glm_init,
+            features=features,
         )
-        model.fit(X_train, y_train, features=features)
+        model.fit(X_train, y_train)
         z_train = model.predict(X_train)
         z_valid = model.predict(X_valid)
         loss_train[i, 0, :] = model.distribution.loss(y=y_train, z=z_train).sum()
