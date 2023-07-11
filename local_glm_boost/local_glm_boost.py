@@ -6,7 +6,7 @@ from scipy.optimize import minimize
 
 from .utils.distributions import Distribution, initiate_distribution
 from .utils.fix_datatype import fix_datatype
-from .boosting_tree import LocalBoostingTree
+from .boosting_tree import BoostingTree
 
 
 class LocalGLMBooster:
@@ -113,7 +113,7 @@ class LocalGLMBooster:
         """Initiate the trees."""
         self.trees = [
             [
-                LocalBoostingTree(
+                BoostingTree(
                     distribution=self.distribution,
                     max_depth=self.max_depth[j],
                     min_samples_split=self.min_samples_split[j],
@@ -191,7 +191,7 @@ class LocalGLMBooster:
         if z is None:
             z = self.predict(X)
         self.trees[j].append(
-            LocalBoostingTree(
+            BoostingTree(
                 distribution=self.distribution,
                 max_depth=self.max_depth[j],
                 min_samples_split=self.min_samples_split[j],

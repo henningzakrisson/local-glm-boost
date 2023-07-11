@@ -7,7 +7,7 @@ from scipy.optimize import minimize
 from local_glm_boost.utils.distributions import Distribution
 
 
-class LocalBoostingTree(DecisionTreeRegressor):
+class BoostingTree(DecisionTreeRegressor):
     """
     A Gradient Boosting Machine tree for the LocalGLMBoost algorithm.
 
