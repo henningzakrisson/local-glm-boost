@@ -1,4 +1,4 @@
-config_name = "test_run"
+config_name = "simulation_study"
 
 # Import stuff
 import yaml
@@ -84,18 +84,25 @@ learning_rate = config["learning_rate"]
 n_splits = config["n_splits"]
 glm_init = config["glm_init"]
 
-tuning_results = tune_n_estimators(
-    X=X_train,
-    y=y_train,
+model = LocalGLMBooster(
+    n_estimators=0,
+    learning_rate=learning_rate,
     max_depth=max_depth,
     min_samples_leaf=min_samples_leaf,
     distribution=distribution,
-    n_estimators_max=n_estimators_max,
-    learning_rate=learning_rate,
     glm_init=glm_init,
+)
+
+tuning_results = tune_n_estimators(
+    X=X_train,
+    y=y_train,
+    model=model,
+    n_estimators_max=n_estimators_max,
     n_splits=n_splits,
     rng=rng,
     logger=logger,
+    parallel=config["parallel"],
+    n_jobs=config["n_jobs"],
 )
 
 n_estimators = tuning_results["n_estimators"]
@@ -167,7 +174,7 @@ feature_importance.columns = [f"x_{j}" for j in feature_importance.columns]
 logger.log("Saving results...")
 results.to_csv(f"{output_path}/MSE.csv")
 for data_set in ["train", "valid"]:
-    pd.DataFrame(tuning_results["loss"][data_set].sum(axis=0)).to_csv(
+    pd.DataFrame(np.sum(tuning_results["loss"][data_set], axis=0)).to_csv(
         f"{output_path}/tuning_loss_{data_set}.csv"
     )
 
