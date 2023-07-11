@@ -1,10 +1,11 @@
+config_name = "test_run"
+
 # Import stuff
-import os
 import yaml
+import os
 
 import numpy as np
 import pandas as pd
-
 
 from local_glm_boost.local_glm_boost import LocalGLMBooster
 from local_glm_boost.utils.tuning import tune_n_estimators
@@ -12,9 +13,9 @@ from local_glm_boost.utils.logger import LocalGLMBoostLogger
 
 # Set up output folder, configuration file, run_id and logger
 script_dir = os.path.dirname(os.path.realpath(__file__))
-with open(os.path.join(script_dir, "config.yaml"), "r") as f:
+with open(os.path.join(script_dir, f"{config_name}.yaml"), "r") as f:
     config = yaml.load(f, Loader=yaml.FullLoader)
-folder_path = os.path.join(script_dir, "../../data/results/")
+folder_path = os.path.join(script_dir, "../data/results/")
 os.makedirs(folder_path, exist_ok=True)
 run_id = (
     max(
@@ -40,9 +41,10 @@ p = config["p"]
 rng = np.random.default_rng(config["random_state"])
 cov = np.eye(p)
 correlations = config["correlations"]
-for feature_1, feature_2, correlation in correlations:
-    cov[feature_1, feature_2] = correlation
-    cov[feature_2, feature_1] = correlation
+if correlations is not None:
+    for feature_1, feature_2, correlation in correlations:
+        cov[feature_1, feature_2] = correlation
+        cov[feature_2, feature_1] = correlation
 X = rng.multivariate_normal(np.zeros(p), cov, size=n)
 
 # Evaluate beta functions on X
@@ -181,4 +183,4 @@ for model_name in mu_hat.keys():
 for model_name in beta_hat.keys():
     beta_hat[model_name].to_csv(f"{output_path}/beta_hat/{model_name}.csv")
 
-logger.log("Done!")
+logger.log_finish()

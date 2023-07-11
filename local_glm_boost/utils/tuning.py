@@ -66,6 +66,7 @@ def tune_n_estimators(
     )
     loss_train = np.ones((n_splits, max(n_estimators_max) + 1, p)) * np.nan
     loss_valid = np.ones((n_splits, max(n_estimators_max) + 1, p)) * np.nan
+
     for i, idx in enumerate(folds):
         logger.append_format_level(f"fold {i+1}/{n_splits}")
         logger.log("tuning", verbose=1)
@@ -112,15 +113,19 @@ def tune_n_estimators(
                     ).sum()
                 else:
                     if j == 0:
-                        loss_train[i, k, j] = loss_train[i, k - 1, j + 1]
-                        loss_valid[i, k, j] = loss_valid[i, k - 1, j + 1]
+                        loss_train[i, k, j] = loss_train[i, k - 1, -1]
+                        loss_valid[i, k, j] = loss_valid[i, k - 1, -1]
                     else:
                         loss_train[i, k, j] = loss_train[i, k, j - 1]
                         loss_valid[i, k, j] = loss_valid[i, k, j - 1]
 
-            # Stop if no improvement was made
-            if k != max(n_estimators_max) and np.all(
-                [loss_valid[i, k, 0] >= loss_valid[i, k - 1, 1]]
+            if k == max(n_estimators_max):
+                logger.log(
+                    msg="tuning did not converge",
+                    verbose=1,
+                )
+            elif np.all(
+                [loss_valid[i, k, 0] >= loss_valid[i, k - 1, -1]]
                 + [loss_valid[i, k, j] >= loss_valid[i, k, j - 1] for j in range(1, p)]
             ):
                 loss_valid[i, k + 1 :, :] = loss_valid[i, k, -1]
@@ -130,14 +135,10 @@ def tune_n_estimators(
                 )
                 break
 
-            if k == max(n_estimators_max):
-                logger.log(
-                    msg="tuning did not converge",
-                    verbose=1,
-                )
             logger.log_progress(
                 step=k, total_steps=max(n_estimators_max) + 1, verbose=2
             )
+
         logger.reset_progress()
         logger.remove_format_level()
 

@@ -1,4 +1,4 @@
-n: 2000
+n: 20000
 p: 3
 random_state: 11
 correlations:
@@ -6,9 +6,9 @@ correlations:
 distribution: "normal"
 z0: 0
 beta_functions:
-  - "2 * np.ones(len(X))"
-  - "np.zeros(len(X))"
-  - "np.zeros(len(X))"
+  - "0.5 * np.ones(len(X))"
+  - "-0.25 * X[:, 1]"
+  - "0.5 * np.abs(X[:, 2]) * np.sin(2 * X[:, 2]) / X[:, 2]"
 
 learning_rate: 0.1
 n_estimators_max: 100
