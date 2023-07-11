@@ -1,4 +1,0 @@
-[2023-07-10 20:39][run_5][Simulating data...]
-[2023-07-10 20:39][run_5][Tuning model...]
-[2023-07-10 20:39][run_5][fold 1/10][tuning]
-[2023-07-10 20:45][run_5][fold 1/10][progress: 10%]
