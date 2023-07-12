@@ -18,13 +18,18 @@ folder_path = os.path.join(script_dir, "../data/results/")
 config_path = os.path.join(script_dir, f"{config_name}.yaml")
 with open(config_path, "r") as f:
     config = yaml.load(f, Loader=yaml.FullLoader)
-run_id = (
-    max(
-        [int(folder_name.split("_")[1]) for folder_name in os.listdir(folder_path)]
-        + [0]
+
+if os.path.exists(folder_path) and os.listdir(folder_path):
+    run_id = (
+        max(
+            [int(folder_name.split("_")[1]) for folder_name in os.listdir(folder_path)]
+            + [0]
+        )
+        + 1
     )
-    + 1
-)
+else:
+    run_id = 0
+
 output_path = os.path.join(folder_path, f"run_{run_id}")
 os.makedirs(output_path)
 
