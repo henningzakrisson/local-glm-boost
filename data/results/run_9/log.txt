@@ -1,6 +1,0 @@
-[2023-07-12 14:20][run_9][Simulating data...]
-[2023-07-12 14:20][run_9][Tuning model...]
-[2023-07-12 14:20][run_9][performing cross-validation on 5 folds]
-[2023-07-12 14:25][run_9][Fitting model]
-[2023-07-12 14:27][run_9][Saving results...]
-[2023-07-12 14:27][run_9][Finished in 6 minutes, 25.11 seconds.]

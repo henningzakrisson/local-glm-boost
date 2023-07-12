@@ -1,4 +1,4 @@
-config_name = "simulation_study_light"
+config_name = "simulation_study"
 
 # Import stuff
 import yaml
@@ -37,7 +37,7 @@ logger.append_format_level(f"run_{run_id}")
 
 
 # Set up simulation metadata
-logger.log("Simulating data...")
+logger.log("Simulating data")
 n = config["n"]
 p = config["p"]
 rng = np.random.default_rng(config["random_state"])
@@ -79,7 +79,7 @@ X_test, y_test, mu_test, beta_test = (
 )
 
 # Tune n_estimators
-logger.log("Tuning model...")
+logger.log("Tuning model")
 max_depth = config["max_depth"]
 min_samples_leaf = config["min_samples_leaf"]
 distribution = config["distribution"]
@@ -112,7 +112,7 @@ tuning_results = tune_n_estimators(
 n_estimators = tuning_results["n_estimators"]
 
 # Evaluate performance
-logger.log("Fitting model")
+logger.log("Fitting models")
 model = LocalGLMBooster(
     n_estimators=n_estimators,
     learning_rate=learning_rate,
