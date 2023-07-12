@@ -1,0 +1,3 @@
+[2023-07-11 21:34][run_9][Simulating data...]
+[2023-07-11 21:34][run_9][Tuning model...]
+[2023-07-11 21:34][run_9][performing cross-validation on 10 folds]

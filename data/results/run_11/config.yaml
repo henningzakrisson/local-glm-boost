@@ -1,0 +1,30 @@
+n: 20000
+p: 8
+random_state: 11
+correlations:
+  - [1, 7, 0.5]
+
+distribution: "normal"
+z0: 0
+beta_functions:
+  - "0.5 * np.ones(len(X))"
+  - "-0.25 * X[:, 1]"
+  - "0.5 * np.abs(X[:, 2]) * np.sin(2 * X[:, 2]) / X[:, 2]"
+  - "np.zeros(len(X))"
+  - "0.5 * X[:, 3]"
+  - "(1 / 8) * X[:, 4] ** 2"
+  - "np.zeros(len(X))"
+  - "np.zeros(len(X))"
+
+learning_rate: 0.1
+n_estimators_max: 100
+min_samples_split: 10
+min_samples_leaf: 10
+max_depth: 2
+glm_init: true
+features: null
+
+test_size: 0.5
+n_splits: 5
+parallel: true
+n_jobs: -1
