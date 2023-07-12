@@ -56,7 +56,7 @@ class BoostingTree(DecisionTreeRegressor):
         """
         g = X[:, j] * self.distribution.grad(y=y, z=z)
         self.fit(X[:, features], -g)
-        self._adjust_node_values(X=X, y=y, z=z, j=j)
+        self._adjust_node_values(X=X, y=y, z=z, j=j, features=features)
 
     def _adjust_node_values(
         self,
@@ -64,6 +64,7 @@ class BoostingTree(DecisionTreeRegressor):
         y: np.ndarray,
         z: np.ndarray,
         j: int,
+        features: List[int],
         node_index: int = 0,
     ) -> None:
         """
@@ -74,6 +75,7 @@ class BoostingTree(DecisionTreeRegressor):
         :param y: The output training data for the model as a numpy array
         :param z: The current parameter estimates
         :param j: Parameter dimension to update
+        :param features: The indices of the features to use for the tree.
         :param node_index: The index of the node to update
         """
         # Optimize node response
@@ -93,7 +95,7 @@ class BoostingTree(DecisionTreeRegressor):
             # This is a leaf
             return
         threshold = self.tree_.threshold[node_index]
-        index_left = X[:, feature] <= threshold
+        index_left = X[:, features[feature]] <= threshold
         child_left = self.tree_.children_left[node_index]
         child_right = self.tree_.children_right[node_index]
         self._adjust_node_values(
@@ -101,6 +103,7 @@ class BoostingTree(DecisionTreeRegressor):
             y=y[index_left],
             z=z[index_left],
             j=j,
+            features=features,
             node_index=child_left,
         )
         self._adjust_node_values(
@@ -108,6 +111,7 @@ class BoostingTree(DecisionTreeRegressor):
             y=y[~index_left],
             z=z[~index_left],
             j=j,
+            features=features,
             node_index=child_right,
         )
 
