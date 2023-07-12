@@ -22,7 +22,6 @@ min_samples_split: 10
 min_samples_leaf: 10
 max_depth: 2
 glm_init: true
-features: None
 
 test_size: 0.5
 n_splits: 5

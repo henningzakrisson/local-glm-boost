@@ -1,4 +1,4 @@
-n: 200000
+n: 20000
 p: 8
 random_state: 11
 correlations:
@@ -16,13 +16,13 @@ beta_functions:
   - "np.zeros(len(X))"
   - "np.zeros(len(X))"
 
-learning_rate: 0.01
-n_estimators_max: 1000
+learning_rate: 0.1
+n_estimators_max: 100
 min_samples_split: 10
 min_samples_leaf: 10
 max_depth: 2
 glm_init: true
-features: None
+features: null
 
 test_size: 0.5
 n_splits: 5
