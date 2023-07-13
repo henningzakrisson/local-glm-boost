@@ -16,12 +16,15 @@ beta_functions:
   - "np.zeros(len(X))"
   - "np.zeros(len(X))"
 
-learning_rate: 0.001
-n_estimators_max: 5000
-min_samples_split: 2
-min_samples_leaf: 5
+learning_rate: 0.01
+n_estimators_max: 1000
+min_samples_split: 10
+min_samples_leaf: 10
 max_depth: 2
 glm_init: true
+features: null
 
 test_size: 0.5
-n_splits: 10
+n_splits: 5
+parallel: true
+n_jobs: -1
