@@ -50,6 +50,29 @@ class LocalGLMBoosterTestCase(unittest.TestCase):
             places=3,
         )
 
+    def test_normal_loss_with_weights(
+        self,
+    ):
+        """
+        Test the loss results on a normal distribution with duration weights
+        """
+        w = self.rng.choice([0.5, 1, 2], size=self.X.shape[0])
+        y = self.rng.normal(w * self.z, 1)
+        model = LocalGLMBooster(
+            distribution="normal",
+            n_estimators=[48, 12],
+            learning_rate=0.1,
+            min_samples_leaf=20,
+            max_depth=2,
+        )
+        model.fit(X=self.X, y=y, w=w)
+
+        self.assertAlmostEqual(
+            model.distribution.loss(y=y, z=model.predict(X=self.X), w=w).mean(),
+            2.4300830401449933,
+            places=3,
+        )
+
     def test_tuning(self):
         """
         Test the tuning of the number of estimators
@@ -71,6 +94,36 @@ class LocalGLMBoosterTestCase(unittest.TestCase):
         )
         n_estimators = tuning_results["n_estimators"]
         n_estimators_expected = [50, 37]
+        for i, kappa in enumerate(n_estimators_expected):
+            self.assertEqual(
+                n_estimators_expected[i],
+                n_estimators[i],
+                msg=f"Optimal n_estimators for normal distribution not as expected for dimension {i}",
+            )
+
+    def test_tuning_with_weights(self):
+        """
+        Test the tuning of the number of estimators
+        """
+        w = self.rng.choice([0.5, 1, 2], size=self.X.shape[0])
+        y = self.rng.normal(self.z, 1)
+        model = LocalGLMBooster(
+            distribution="normal",
+            learning_rate=0.1,
+            min_samples_leaf=20,
+            max_depth=2,
+        )
+        tuning_results = tune_n_estimators(
+            X=self.X,
+            y=y,
+            w=w,
+            model=model,
+            n_estimators_max=50,
+            rng=self.rng,
+            n_splits=2,
+        )
+        n_estimators = tuning_results["n_estimators"]
+        n_estimators_expected = [48, 12]
         for i, kappa in enumerate(n_estimators_expected):
             self.assertEqual(
                 n_estimators_expected[i],

@@ -56,18 +56,22 @@ class LocalGLMBooster:
         self,
         X: np.ndarray,
         y: np.ndarray,
+        w: Optional[np.ndarray] = None,
     ):
         """
         Fit the model to the data.
 
         :param X: Input data matrix of shape (n, p).
         :param y: True response values for the input data of shape (n,).
+        :param w: Weights of the observations. If `None`, all weights are set to 1.
         """
+        if w is None:
+            w = np.ones_like(y)
         self._adjust_feature_selection(X=X)
         X, y = fix_datatype(X=X, y=y)
         self.p = X.shape[1]
         self._adjust_hyperparameters()
-        self.z0, self.beta0 = self.adjust_initializer(X=X, y=y)
+        self.z0, self.beta0 = self.adjust_initializer(X=X, y=y, w=w)
         self._initiate_trees()
 
         z = self.z0 + (self.beta0.T @ X.T).T.reshape(-1)
@@ -76,7 +80,7 @@ class LocalGLMBooster:
             for j in range(self.p):
                 if k < self.n_estimators[j]:
                     self.trees[j][k].fit_gradients(
-                        X=X, y=y, z=z, j=j, features=self.features[j]
+                        X=X, y=y, z=z, w=w, j=j, features=self.features[j]
                     )
                     z += (
                         self.learning_rate[j]
@@ -85,7 +89,7 @@ class LocalGLMBooster:
                     )
 
         # Re-adjust the initial parameter values
-        self.z0, self.beta0 = self.adjust_initializer(X=X, y=y)
+        self.z0, self.beta0 = self.adjust_initializer(X=X, y=y, w=w)
 
     def _adjust_feature_selection(self, X: Union[pd.DataFrame, np.ndarray]) -> None:
         """Adjust keys for the features selection and save feature names.
@@ -148,7 +152,11 @@ class LocalGLMBooster:
             adjust_param(param)
 
     def adjust_initializer(
-        self, X: np.ndarray, y: np.ndarray, z: Optional[np.ndarray] = None
+        self,
+        X: np.ndarray,
+        y: np.ndarray,
+        z: Optional[np.ndarray] = None,
+        w: Optional[np.ndarray] = None,
     ) -> Tuple[float, np.ndarray]:
         """
         Adjust the initalization of the model.
@@ -158,13 +166,16 @@ class LocalGLMBooster:
         :param X: The input training data for the model as a numpy array.
         :param y: The target values.
         :param z: The current parameter estimates. If None, the initial parameter estimates are assumed to be zero.
+        :param w: The weights of the observations. If None, all weights are set to 1.
         :return: The initial parameter estimates.
         """
+        if w is None:
+            w = np.ones_like(y)
         if z is None:
             z = np.zeros(X.shape[0])
         glm_coefficients = minimize(
             fun=lambda beta: self.distribution.loss(
-                y=y, z=z + beta[0] + X[:, self.glm_init] @ beta[1:]
+                y=y, z=z + beta[0] + X[:, self.glm_init] @ beta[1:], w=w
             ).sum(),
             x0=np.zeros(1 + sum(self.glm_init)),
         )["x"]
@@ -179,6 +190,7 @@ class LocalGLMBooster:
         y: np.ndarray,
         j: int,
         z: Optional[np.ndarray] = None,
+        w: Optional[np.ndarray] = None,
     ) -> None:
         """
         Updates the current boosting model with one additional tree to the jth coefficient.
@@ -187,7 +199,10 @@ class LocalGLMBooster:
         :param y: The target values for the training data.
         :param j: Coefficient  to update
         :param z: The current predictions of the model. If None, the predictions are computed from the current model.
+        :param w: The weights of the observations. If None, all weights are set to 1.
         """
+        if w is None:
+            w = np.ones_like(y)
         if z is None:
             z = self.predict(X)
         self.trees[j].append(
@@ -198,7 +213,9 @@ class LocalGLMBooster:
                 min_samples_leaf=self.min_samples_leaf[j],
             )
         )
-        self.trees[j][-1].fit_gradients(X=X, y=y, z=z, j=j, features=self.features[j])
+        self.trees[j][-1].fit_gradients(
+            X=X, y=y, z=z, w=w, j=j, features=self.features[j]
+        )
         self.n_estimators[j] += 1
 
     def predict_parameter(
