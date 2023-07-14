@@ -32,12 +32,14 @@ class Distribution:
         self,
         y: np.ndarray,
         z: np.ndarray,
+        w: Union[float, np.ndarray] = 1,
     ) -> np.ndarray:
         """
         Calculates the loss of the parameter estimates and the response.
 
         :param z: The predicted parameters.
         :param y: The target values.
+        :param w: The weights of the observations. If `None`, all weights are set to 1.
         :return: The loss function value(s) for the given `z` and `y`.
         """
         pass
@@ -46,12 +48,14 @@ class Distribution:
         self,
         y: np.ndarray,
         z: np.ndarray,
+        w: Union[float, np.ndarray] = 1,
     ) -> np.ndarray:
         """
         Calculates the gradients of the loss function with respect to the parameters.
 
         :param z: The predicted parameters.
         :param y: The target values.
+        :param w: The weights of the observations. If `None`, all weights are set to 1.
         :return: The gradient(s) of the loss function for the given `z`, `y`, and `j`.
         """
         pass
@@ -69,15 +73,17 @@ class NormalDistribution(Distribution):
         self,
         y: np.ndarray,
         z: np.ndarray,
+        w: Union[float, np.ndarray] = 1,
     ) -> np.ndarray:
-        return (y - z) ** 2
+        return (y - w * z) ** 2
 
     def grad(
         self,
         y: np.ndarray,
         z: np.ndarray,
+        w: Union[float, np.ndarray] = 1,
     ) -> np.ndarray:
-        return -2 * (y - z)
+        return -2 * (y - w * z)
 
 
 def initiate_distribution(

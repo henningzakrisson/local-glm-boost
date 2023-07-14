@@ -10,6 +10,7 @@ from .logger import LocalGLMBoostLogger
 def tune_n_estimators(
     X: np.ndarray,
     y: np.ndarray,
+    w: Optional[np.ndarray] = None,
     model: LocalGLMBooster = LocalGLMBooster(),
     n_estimators_max: Union[int, List[int]] = 1000,
     n_splits: int = 4,
@@ -23,6 +24,7 @@ def tune_n_estimators(
 
     :param X: The input data matrix of shape (n_samples, n_features).
     :param y: The target values of shape (n_samples,).
+    :param w: The weights of the observations. If `None`, all weights are set to 1.
     :param model: The GBM model to tune.
     :param n_estimators_max: The maximum number of estimators to try.
     :param n_splits: The number of folds to use for k-fold cross-validation.
@@ -42,7 +44,10 @@ def tune_n_estimators(
         else [n_estimators_max] * X.shape[1]
     )
 
-    folds = _fold_split(X=X, y=y, n_splits=n_splits, rng=rng)
+    if w is None:
+        w = np.ones_like(y)
+
+    folds = _fold_split(X=X, y=y, w=w, n_splits=n_splits, rng=rng)
 
     logger.log(f"performing cross-validation on {n_splits} folds")
     if parallel:
@@ -86,12 +91,17 @@ def tune_n_estimators(
 def _fold_split(
     X: np.ndarray,
     y: np.ndarray,
+    w: np.ndarray,
     n_splits: int,
     rng: np.random.Generator,
-) -> Dict[int, Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]]:
+) -> Dict[
+    int, Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]
+]:
     """Split data into k folds.
 
     :param X: The input data matrix of shape (n_samples, n_features).
+    :param y: The target values of shape (n_samples,).
+    :param w: The weights of the observations.
     :param n_splits: The number of folds to use for k-fold cross-validation.
     :param rng: The random number generator.
     :return A dictionary containing the folds as tuples in the order
@@ -106,8 +116,10 @@ def _fold_split(
         folds[i] = (
             X[idx_train],
             y[idx_train],
+            w[idx_train],
             X[idx_test],
             y[idx_test],
+            w[idx_test],
         )
     return folds
 
@@ -117,21 +129,21 @@ def _evaluate_fold(
     model: LocalGLMBooster,
     n_estimators_max: List[int],
 ):
-    X_train, y_train, X_valid, y_valid = fold
+    X_train, y_train, w_train, X_valid, y_valid, w_valid = fold
 
-    model.fit(X_train, y_train)
+    model.fit(X_train, y_train, w_train)
     z_train = model.predict(X_train)
     z_valid = model.predict(X_valid)
 
     loss_train = np.zeros((max(n_estimators_max) + 1, model.p))
     loss_valid = np.zeros((max(n_estimators_max) + 1, model.p))
-    loss_train[0, :] = model.distribution.loss(y=y_train, z=z_train).sum()
-    loss_valid[0, :] = model.distribution.loss(y=y_valid, z=z_valid).sum()
+    loss_train[0, :] = model.distribution.loss(y=y_train, z=z_train, w=w_train).sum()
+    loss_valid[0, :] = model.distribution.loss(y=y_valid, z=z_valid, w=w_valid).sum()
 
     for k in range(1, max(n_estimators_max) + 1):
         for j in range(model.p):
             if k < n_estimators_max[j]:
-                model.add_tree(X=X_train, y=y_train, j=j, z=z_train)
+                model.add_tree(X=X_train, y=y_train, j=j, z=z_train, w=w_train)
 
                 z_train += (
                     model.learning_rate[j]
@@ -144,8 +156,12 @@ def _evaluate_fold(
                     * X_valid[:, j]
                 )
 
-                loss_train[k, j] = model.distribution.loss(y=y_train, z=z_train).sum()
-                loss_valid[k, j] = model.distribution.loss(y=y_valid, z=z_valid).sum()
+                loss_train[k, j] = model.distribution.loss(
+                    y=y_train, z=z_train, w=w_train
+                ).sum()
+                loss_valid[k, j] = model.distribution.loss(
+                    y=y_valid, z=z_valid, w=w_valid
+                ).sum()
             else:
                 if j == 0:
                     loss_train[k, j] = loss_train[k - 1, -1]
