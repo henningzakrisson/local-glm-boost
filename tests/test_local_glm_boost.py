@@ -55,7 +55,7 @@ class LocalGLMBoosterTestCase(unittest.TestCase):
         self,
     ):
         """
-        Test the loss results on a normal distribution
+        Test the loss results on a gamma distribution
         """
         y = self.rng.gamma(1, np.exp(0.1 * self.z))
         model = LocalGLMBooster(
@@ -73,25 +73,25 @@ class LocalGLMBoosterTestCase(unittest.TestCase):
             places=3,
         )
 
-    def test_gamma_loss_with_weights(
+    def test_poisson_loss(
         self,
     ):
         """
-        Test the loss results on a normal distribution
+        Test the loss results on a Poisson distribution
         """
-        y = self.rng.gamma(self.w, np.exp(0.1 * self.z))
+        y = self.rng.poisson(np.exp(0.1 * self.z))
         model = LocalGLMBooster(
-            distribution="gamma",
-            n_estimators=[78, 191],
-            learning_rate=0.01,
+            distribution="poisson",
+            n_estimators=[6, 24],
+            learning_rate=0.1,
             min_samples_leaf=5,
             max_depth=2,
         )
-        model.fit(X=self.X, y=y, w=self.w)
+        model.fit(X=self.X, y=y)
 
         self.assertAlmostEqual(
-            model.distribution.loss(y=y, z=model.predict(X=self.X), w=self.w).mean(),
-            1.2883775530226058,
+            model.distribution.loss(y=y, z=model.predict(X=self.X)).mean(),
+            0.8769437151152,
             places=3,
         )
 
@@ -114,6 +114,50 @@ class LocalGLMBoosterTestCase(unittest.TestCase):
         self.assertAlmostEqual(
             model.distribution.loss(y=y, z=model.predict(X=self.X), w=self.w).mean(),
             2.4300830401449933,
+            places=3,
+        )
+
+    def test_gamma_loss_with_weights(
+        self,
+    ):
+        """
+        Test the loss results on a gamma distribution with duration weights
+        """
+        y = self.rng.gamma(self.w, np.exp(0.1 * self.z))
+        model = LocalGLMBooster(
+            distribution="gamma",
+            n_estimators=[78, 191],
+            learning_rate=0.01,
+            min_samples_leaf=5,
+            max_depth=2,
+        )
+        model.fit(X=self.X, y=y, w=self.w)
+
+        self.assertAlmostEqual(
+            model.distribution.loss(y=y, z=model.predict(X=self.X), w=self.w).mean(),
+            1.2883775530226058,
+            places=3,
+        )
+
+    def test_poisson_loss_with_weights(
+        self,
+    ):
+        """
+        Test the loss results on a Poisson distribution with duration weights
+        """
+        y = self.rng.poisson(self.w * np.exp(0.1 * self.z))
+        model = LocalGLMBooster(
+            distribution="poisson",
+            n_estimators=[6, 24],
+            learning_rate=0.1,
+            min_samples_leaf=5,
+            max_depth=2,
+        )
+        model.fit(X=self.X, y=y, w=self.w)
+
+        self.assertAlmostEqual(
+            model.distribution.loss(y=y, z=model.predict(X=self.X), w=self.w).mean(),
+            1.0776214781575013,
             places=3,
         )
 

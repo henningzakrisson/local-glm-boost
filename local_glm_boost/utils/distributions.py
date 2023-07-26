@@ -87,6 +87,31 @@ class NormalDistribution(Distribution):
 
 
 @inherit_docstrings
+class PoissonDistribution(Distribution):
+    def __init__(
+        self,
+    ):
+        """Initialize a Poisson distribution object. Parameterization: z = np.log(lambda)"""
+        super().__init__()
+
+    def loss(
+        self,
+        y: np.ndarray,
+        z: np.ndarray,
+        w: Union[float, np.ndarray] = 1,
+    ) -> np.ndarray:
+        return w * np.exp(z) - y * z
+
+    def grad(
+        self,
+        y: np.ndarray,
+        z: np.ndarray,
+        w: Union[float, np.ndarray] = 1,
+    ) -> np.ndarray:
+        return w * np.exp(z) - y
+
+
+@inherit_docstrings
 class GammaDistribution(Distribution):
     def __init__(
         self,
@@ -124,4 +149,6 @@ def initiate_distribution(
         return NormalDistribution()
     if distribution == "gamma":
         return GammaDistribution()
+    if distribution == "poisson":
+        return PoissonDistribution()
     raise ValueError(f"Unknown distribution: {distribution}")
