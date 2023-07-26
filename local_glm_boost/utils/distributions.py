@@ -86,6 +86,31 @@ class NormalDistribution(Distribution):
         return -2 * (y - w * z)
 
 
+@inherit_docstrings
+class GammaDistribution(Distribution):
+    def __init__(
+        self,
+    ):
+        """Initialize a normal distribution object. Parameterization: z = mu"""
+        super().__init__()
+
+    def loss(
+        self,
+        y: np.ndarray,
+        z: np.ndarray,
+        w: Union[float, np.ndarray] = 1,
+    ) -> np.ndarray:
+        return y * np.exp(-z) + w * z
+
+    def grad(
+        self,
+        y: np.ndarray,
+        z: np.ndarray,
+        w: Union[float, np.ndarray] = 1,
+    ) -> np.ndarray:
+        return w - y * np.exp(-z)
+
+
 def initiate_distribution(
     distribution: str = "custom",
 ) -> Distribution:
@@ -97,4 +122,6 @@ def initiate_distribution(
     """
     if distribution == "normal":
         return NormalDistribution()
+    if distribution == "gamma":
+        return GammaDistribution()
     raise ValueError(f"Unknown distribution: {distribution}")
