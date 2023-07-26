@@ -71,7 +71,7 @@ class LocalGLMBooster:
         X, y = fix_datatype(X=X, y=y)
         self.p = X.shape[1]
         self._adjust_hyperparameters()
-        self.z0, self.beta0 = self.adjust_initializer(X=X, y=y, w=w)
+        self.z0, self.beta0 = self._adjust_initializer(X=X, y=y, w=w)
         self._initiate_trees()
 
         z = self.z0 + (self.beta0.T @ X.T).T.reshape(-1)
@@ -89,7 +89,7 @@ class LocalGLMBooster:
                     )
 
         # Re-adjust the initial parameter values
-        self.z0, self.beta0 = self.adjust_initializer(X=X, y=y, w=w)
+        self.z0, self.beta0 = self._adjust_initializer(X=X, y=y, w=w)
 
     def _adjust_feature_selection(self, X: Union[pd.DataFrame, np.ndarray]) -> None:
         """Adjust keys for the features selection and save feature names.
@@ -151,7 +151,7 @@ class LocalGLMBooster:
         ]:
             adjust_param(param)
 
-    def adjust_initializer(
+    def _adjust_initializer(
         self,
         X: np.ndarray,
         y: np.ndarray,
@@ -173,10 +173,11 @@ class LocalGLMBooster:
             w = np.ones_like(y)
         if z is None:
             z = np.zeros(X.shape[0])
+        to_minimize = lambda z0_and_beta: self.distribution.loss(
+            y=y, z=z + z0_and_beta[0] + X[:, self.glm_init] @ z0_and_beta[1:], w=w
+        ).mean()
         glm_coefficients = minimize(
-            fun=lambda beta: self.distribution.loss(
-                y=y, z=z + beta[0] + X[:, self.glm_init] @ beta[1:], w=w
-            ).sum(),
+            fun=to_minimize,
             x0=np.zeros(1 + sum(self.glm_init)),
         )["x"]
         z0 = glm_coefficients[0]

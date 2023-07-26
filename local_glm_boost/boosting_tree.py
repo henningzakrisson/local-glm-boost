@@ -90,7 +90,7 @@ class BoostingTree(DecisionTreeRegressor):
         node_value = minimize(
             fun=lambda step: self.distribution.loss(
                 y=y, z=z + X[:, j] * step, w=w
-            ).sum(),
+            ).mean(),
             x0=self.tree_.value[node_index][0],
         ).x[0]
         self.tree_.value[node_index] = node_value

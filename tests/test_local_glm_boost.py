@@ -27,6 +27,7 @@ class LocalGLMBoosterTestCase(unittest.TestCase):
         betas[1] = 2 * self.X[:, 1]
         self.beta = np.stack(betas, axis=1).T
         self.z = self.z0 + np.sum(self.beta.T * self.X, axis=1)
+        self.w = self.rng.choice([0.5, 1, 2], size=self.X.shape[0])
 
     def test_normal_loss(
         self,
@@ -46,7 +47,51 @@ class LocalGLMBoosterTestCase(unittest.TestCase):
 
         self.assertAlmostEqual(
             model.distribution.loss(y=y, z=model.predict(X=self.X)).mean(),
-            1.4605285970406858,
+            1.4599518460550729,
+            places=3,
+        )
+
+    def test_gamma_loss(
+        self,
+    ):
+        """
+        Test the loss results on a normal distribution
+        """
+        y = self.rng.gamma(1, np.exp(0.1 * self.z))
+        model = LocalGLMBooster(
+            distribution="gamma",
+            n_estimators=[78, 191],
+            learning_rate=0.01,
+            min_samples_leaf=5,
+            max_depth=2,
+        )
+        model.fit(X=self.X, y=y)
+
+        self.assertAlmostEqual(
+            model.distribution.loss(y=y, z=model.predict(X=self.X)).mean(),
+            1.0829052694663523,
+            places=3,
+        )
+
+    def test_gamma_loss_with_weights(
+        self,
+    ):
+        """
+        Test the loss results on a normal distribution
+        """
+        y = self.rng.gamma(self.w, np.exp(0.1 * self.z))
+        model = LocalGLMBooster(
+            distribution="gamma",
+            n_estimators=[78, 191],
+            learning_rate=0.01,
+            min_samples_leaf=5,
+            max_depth=2,
+        )
+        model.fit(X=self.X, y=y, w=self.w)
+
+        self.assertAlmostEqual(
+            model.distribution.loss(y=y, z=model.predict(X=self.X), w=self.w).mean(),
+            1.2883775530226058,
             places=3,
         )
 
@@ -56,8 +101,7 @@ class LocalGLMBoosterTestCase(unittest.TestCase):
         """
         Test the loss results on a normal distribution with duration weights
         """
-        w = self.rng.choice([0.5, 1, 2], size=self.X.shape[0])
-        y = self.rng.normal(w * self.z, 1)
+        y = self.rng.normal(self.w * self.z, 1)
         model = LocalGLMBooster(
             distribution="normal",
             n_estimators=[48, 12],
@@ -65,10 +109,10 @@ class LocalGLMBoosterTestCase(unittest.TestCase):
             min_samples_leaf=20,
             max_depth=2,
         )
-        model.fit(X=self.X, y=y, w=w)
+        model.fit(X=self.X, y=y, w=self.w)
 
         self.assertAlmostEqual(
-            model.distribution.loss(y=y, z=model.predict(X=self.X), w=w).mean(),
+            model.distribution.loss(y=y, z=model.predict(X=self.X), w=self.w).mean(),
             2.4300830401449933,
             places=3,
         )
@@ -88,12 +132,12 @@ class LocalGLMBoosterTestCase(unittest.TestCase):
             X=self.X,
             y=y,
             model=model,
-            n_estimators_max=50,
+            n_estimators_max=60,
             rng=self.rng,
             n_splits=2,
         )
         n_estimators = tuning_results["n_estimators"]
-        n_estimators_expected = [50, 37]
+        n_estimators_expected = [60, 56]
         for i, kappa in enumerate(n_estimators_expected):
             self.assertEqual(
                 n_estimators_expected[i],
@@ -123,7 +167,7 @@ class LocalGLMBoosterTestCase(unittest.TestCase):
             n_splits=2,
         )
         n_estimators = tuning_results["n_estimators"]
-        n_estimators_expected = [48, 12]
+        n_estimators_expected = [30, 13]
         for i, kappa in enumerate(n_estimators_expected):
             self.assertEqual(
                 n_estimators_expected[i],
