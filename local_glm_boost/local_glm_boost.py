@@ -13,7 +13,7 @@ class LocalGLMBooster:
     def __init__(
         self,
         distribution: Union[Distribution, str] = "normal",
-        n_estimators: Union[List[int], int] = 100,
+        n_estimators: Union[List[int], int, pd.Series] = 100,
         learning_rate: Union[List[float], float] = 0.1,
         min_samples_split: Union[List[int], int] = 2,
         min_samples_leaf: Union[List[int], int] = 1,
@@ -68,7 +68,7 @@ class LocalGLMBooster:
         if w is None:
             w = np.ones_like(y)
         self._adjust_feature_selection(X=X)
-        X, y = fix_datatype(X=X, y=y)
+        X, y, w = fix_datatype(X=X, y=y, w=w)
         self.p = X.shape[1]
         self._adjust_hyperparameters()
         self.z0, self.beta0 = self._adjust_initializer(X=X, y=y, w=w)
@@ -131,17 +131,23 @@ class LocalGLMBooster:
     def _adjust_hyperparameters(self) -> None:
         """Adjust hyperparameters given the new covariate dimensions."""
 
-        def adjust_param(param: str):
-            param_value = getattr(self, param)
-            if isinstance(param_value, List) or isinstance(param_value, np.ndarray):
-                if len(param_value) != self.p:
+        def adjust_param(parameter_name: str):
+            parameter_value = getattr(self, parameter_name)
+            if isinstance(parameter_value, List) or isinstance(
+                parameter_value, np.ndarray
+            ):
+                if len(parameter_value) != self.p:
                     raise ValueError(
-                        f"Length of {param} must be equal to the number of covariates."
+                        f"Length of {parameter_name} must be equal to the number of covariates."
                     )
+            elif isinstance(parameter_value, pd.Series):
+                setattr(
+                    self, parameter_name, parameter_value.loc[self.feature_names].values
+                )
             else:
-                setattr(self, param, [param_value] * self.p)
+                setattr(self, parameter_name, [parameter_value] * self.p)
 
-        for param in [
+        for parameter_name in [
             "n_estimators",
             "learning_rate",
             "min_samples_split",
@@ -149,7 +155,7 @@ class LocalGLMBooster:
             "max_depth",
             "glm_init",
         ]:
-            adjust_param(param)
+            adjust_param(parameter_name)
 
     def _adjust_initializer(
         self,
@@ -175,7 +181,7 @@ class LocalGLMBooster:
             z = np.zeros(X.shape[0])
         to_minimize = lambda z0_and_beta: self.distribution.loss(
             y=y, z=z + z0_and_beta[0] + X[:, self.glm_init] @ z0_and_beta[1:], w=w
-        ).mean()
+        ).sum()
         glm_coefficients = minimize(
             fun=to_minimize,
             x0=np.zeros(1 + sum(self.glm_init)),
@@ -204,6 +210,7 @@ class LocalGLMBooster:
         """
         if w is None:
             w = np.ones_like(y)
+        X, y, w = fix_datatype(X=X, y=y, w=w)
         if z is None:
             z = self.predict(X)
         self.trees[j].append(
@@ -254,9 +261,13 @@ class LocalGLMBooster:
         :param X: Input data matrix of shape (n, p).
         :return: Predicted response values for the input data of shape (n,).
         """
-        X, _ = fix_datatype(X=X, feature_names=self.feature_names)
-        beta = self.predict_parameter(X=X)
-        return self.z0 + np.sum(beta.T * X, axis=1)
+        X_fixed, _, _ = fix_datatype(X=X, feature_names=self.feature_names)
+        beta = self.predict_parameter(X=X_fixed)
+        z_hat = self.z0 + np.sum(beta.T * X_fixed, axis=1)
+        if isinstance(X, pd.DataFrame):
+            return pd.Series(z_hat, index=X.index)
+        else:
+            return z_hat
 
     def compute_feature_importances(
         self, j: Union[str, int] = "all", normalize: bool = True

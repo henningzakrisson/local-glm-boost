@@ -2,8 +2,10 @@ from typing import Union, List, Dict, Tuple, Optional
 from joblib import Parallel, delayed
 
 import numpy as np
+import pandas as pd
 
 from local_glm_boost.local_glm_boost import LocalGLMBooster
+from local_glm_boost.utils.fix_datatype import fix_datatype
 from .logger import LocalGLMBoostLogger
 
 
@@ -46,7 +48,9 @@ def tune_n_estimators(
 
     if w is None:
         w = np.ones_like(y)
-
+    if isinstance(X, pd.DataFrame):
+        feature_names = X.columns
+    X, y, w = fix_datatype(X=X, y=y, w=w)
     folds = _fold_split(X=X, y=y, w=w, n_splits=n_splits, rng=rng)
 
     logger.log(f"performing cross-validation on {n_splits} folds")
@@ -82,6 +86,9 @@ def tune_n_estimators(
         logger=logger,
     )
 
+    if "feature_names" in locals():
+        n_estimators = pd.Series(n_estimators, index=feature_names)
+
     return {
         "n_estimators": n_estimators,
         "loss": loss,
@@ -95,7 +102,8 @@ def _fold_split(
     n_splits: int,
     rng: np.random.Generator,
 ) -> Dict[
-    int, Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]
+    int,
+    Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray],
 ]:
     """Split data into k folds.
 
@@ -125,7 +133,7 @@ def _fold_split(
 
 
 def _evaluate_fold(
-    fold: Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray],
+    fold: Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray],
     model: LocalGLMBooster,
     n_estimators_max: List[int],
 ):
@@ -163,12 +171,12 @@ def _evaluate_fold(
                     y=y_valid, z=z_valid, w=w_valid
                 ).sum()
             else:
-                if j == 0:
-                    loss_train[k, j] = loss_train[k - 1, -1]
-                    loss_valid[k, j] = loss_valid[k - 1, -1]
-                else:
-                    loss_train[k, j] = loss_train[k, j - 1]
-                    loss_valid[k, j] = loss_valid[k, j - 1]
+                loss_train[k, j] = (
+                    loss_train[k - 1, -1] if j == 0 else loss_train[k, j - 1]
+                )
+                loss_valid[k, j] = (
+                    loss_valid[k - 1, -1] if j == 0 else loss_valid[k, j - 1]
+                )
 
         if _has_tuning_converged(
             current_loss=loss_valid[k], previous_loss=loss_valid[k - 1]
@@ -200,6 +208,13 @@ def _find_n_estimators(
     n_estimators_max: Union[int, List[int]],
     logger: LocalGLMBoostLogger,
 ) -> List[int]:
+    """Find the number of estimators for each parameter dimension.
+
+    :param loss: The loss for each parameter dimension and number of estimators.
+    :param n_estimators_max: The maximum number of estimators for each parameter dimension.
+    :param logger: The logger.
+    :return: The number of estimators for each parameter dimension.
+    """
     loss_delta = np.zeros_like(loss)
     loss_delta[1:, 0] = loss[1:, 0] - loss[:-1, -1]
     loss_delta[1:, 1:] = loss[1:, 1:] - loss[1:, :-1]
