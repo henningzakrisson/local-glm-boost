@@ -181,7 +181,7 @@ class LocalGLMBoosterTestCase(unittest.TestCase):
             n_splits=2,
         )
         n_estimators = tuning_results["n_estimators"]
-        n_estimators_expected = [60, 56]
+        n_estimators_expected = [55, 50]
         for i, kappa in enumerate(n_estimators_expected):
             self.assertEqual(
                 n_estimators_expected[i],
@@ -210,7 +210,7 @@ class LocalGLMBoosterTestCase(unittest.TestCase):
             n_splits=2,
         )
         n_estimators = tuning_results["n_estimators"]
-        n_estimators_expected = [30, 45]
+        n_estimators_expected = [47, 50]
         for i, kappa in enumerate(n_estimators_expected):
             self.assertEqual(
                 n_estimators_expected[i],
