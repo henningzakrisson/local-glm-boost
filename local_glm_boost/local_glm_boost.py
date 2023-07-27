@@ -104,14 +104,23 @@ class LocalGLMBooster:
                         X.columns.get_loc(feature)
                         for feature in self.features[coefficient]
                     ]
-                    for coefficient in X.columns
+                    for coefficient in self.features.keys()
                 }
             else:
                 self.features = {
                     j: list(range(X.shape[1])) for j in range(len(X.columns))
                 }
-        elif self.features is None:
-            self.features = {j: list(range(X.shape[1])) for j in range(X.shape[1])}
+            if self.glm_init is not None and not isinstance(self.glm_init, bool):
+                self.glm_init = [
+                    self.glm_init[coefficient] for coefficient in X.columns
+                ]
+            else:
+                self.glm_init = [True for _ in range(X.shape[1])]
+        else:
+            if self.features is None:
+                self.features = {j: list(range(X.shape[1])) for j in range(X.shape[1])}
+            if self.glm_init is None:
+                self.glm_init = [True for _ in range(X.shape[1])]
 
     def _initiate_trees(self):
         """Initiate the trees."""

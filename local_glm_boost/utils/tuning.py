@@ -53,6 +53,7 @@ def tune_n_estimators(
         w = np.ones_like(y)
     if isinstance(X, pd.DataFrame):
         feature_names = X.columns
+    model._adjust_feature_selection(X=X)
     X, y, w = fix_datatype(X=X, y=y, w=w)
     folds = _fold_split(
         X=X, y=y, w=w, n_splits=n_splits, rng=rng, stratified=stratified
