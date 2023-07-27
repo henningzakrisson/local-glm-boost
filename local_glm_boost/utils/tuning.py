@@ -3,6 +3,7 @@ from joblib import Parallel, delayed
 
 import numpy as np
 import pandas as pd
+from sklearn.model_selection import KFold, StratifiedKFold
 
 from local_glm_boost.local_glm_boost import LocalGLMBooster
 from local_glm_boost.utils.fix_datatype import fix_datatype
@@ -21,6 +22,7 @@ def tune_n_estimators(
     logger: Optional[LocalGLMBoostLogger] = None,
     parallel: bool = True,
     n_jobs: int = -1,
+    stratified: bool = False,
 ) -> Dict[str, Union[List[int], Dict[str, np.ndarray]]]:
     """Tunes the kappa parameter of a CycGBM model using k-fold cross-validation.
 
@@ -35,6 +37,7 @@ def tune_n_estimators(
     :param logger: The simulation logger to use for logging.
     :param parallel: Whether to use parallel processing for the cross-validation.
     :param n_jobs: The number of jobs to use for parallel processing. Default is -1, which uses all available cores.
+    :param stratified: Whether to use stratified k-fold cross-validation.
     """
     logger = LocalGLMBoostLogger(verbose=-1) if logger is None else logger
     rng = np.random.default_rng(random_state) if rng is None else rng
@@ -51,7 +54,9 @@ def tune_n_estimators(
     if isinstance(X, pd.DataFrame):
         feature_names = X.columns
     X, y, w = fix_datatype(X=X, y=y, w=w)
-    folds = _fold_split(X=X, y=y, w=w, n_splits=n_splits, rng=rng)
+    folds = _fold_split(
+        X=X, y=y, w=w, n_splits=n_splits, rng=rng, stratified=stratified
+    )
 
     logger.log(f"performing cross-validation on {n_splits} folds")
     if parallel:
@@ -101,6 +106,7 @@ def _fold_split(
     w: np.ndarray,
     n_splits: int,
     rng: np.random.Generator,
+    stratified: bool = False,
 ) -> Dict[
     int,
     Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray],
@@ -115,8 +121,16 @@ def _fold_split(
     :return A dictionary containing the folds as tuples in the order
         (X_train, y_train, X_valid, y_valid).
     """
-    idx = rng.permutation(X.shape[0])
-    idx_folds = np.array_split(idx, n_splits)
+    random_state = rng.integers(low=0, high=2**32 - 1)  # Generate a random integer
+
+    if stratified:
+        splitter = StratifiedKFold(
+            n_splits=n_splits, shuffle=True, random_state=random_state
+        )
+    else:
+        splitter = KFold(n_splits=n_splits, shuffle=True, random_state=random_state)
+
+    idx_folds = [test_index for _, test_index in splitter.split(X, y)]
     folds = {}
     for i in range(n_splits):
         idx_test = idx_folds[i]
