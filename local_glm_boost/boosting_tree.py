@@ -60,16 +60,16 @@ class BoostingTree(DecisionTreeRegressor):
             w = np.ones_like(y)
         g = X[:, j] * self.distribution.grad(y=y, z=z, w=w)
         self.fit(X[:, features], -g)
-        self._adjust_node_values(X=X, y=y, z=z, j=j, features=features)
+        self._adjust_node_values(X=X, y=y, z=z, w=w, j=j, features=features)
 
     def _adjust_node_values(
         self,
         X: np.ndarray,
         y: np.ndarray,
         z: np.ndarray,
+        w: np.ndarray,
         j: int,
         features: List[int],
-        w: Optional[np.ndarray] = None,
         node_index: int = 0,
     ) -> None:
         """
@@ -79,26 +79,20 @@ class BoostingTree(DecisionTreeRegressor):
         :param X: The input training data for the model as a numpy array
         :param y: The output training data for the model as a numpy array
         :param z: The current parameter estimates
-        :param w: The weights of the observations. If `None`, all weights are set to 1.
+        :param w: The weights of the observations.
         :param j: Parameter dimension to update
         :param features: The indices of the features to use for the tree.
-        :param w: The weights of the observations. If `None`, all weights are set to 1.
         :param node_index: The index of the node to update
         """
-        if w is None:
-            w = np.ones_like(y)
+        node_loss = lambda step: self.distribution.loss(
+            y=y, z=z + X[:, j] * step, w=w
+        ).sum()
         node_value = minimize(
-            fun=lambda step: self.distribution.loss(
-                y=y, z=z + X[:, j] * step, w=w
-            ).mean(),
+            fun=node_loss,
             x0=self.tree_.value[node_index][0],
         ).x[0]
         self.tree_.value[node_index] = node_value
-        self.tree_.impurity[node_index] = self.distribution.loss(
-            y=y,
-            z=z + X[:, j] * node_value,
-            w=w,
-        ).sum()
+        self.tree_.impurity[node_index] = node_loss(node_value)
 
         # Tend to the children
         feature = self.tree_.feature[node_index]

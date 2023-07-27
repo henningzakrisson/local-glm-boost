@@ -113,7 +113,7 @@ class LocalGLMBoosterTestCase(unittest.TestCase):
 
         self.assertAlmostEqual(
             model.distribution.loss(y=y, z=model.predict(X=self.X), w=self.w).mean(),
-            2.4300830401449933,
+            4.302068289608678,
             places=3,
         )
 
@@ -135,7 +135,7 @@ class LocalGLMBoosterTestCase(unittest.TestCase):
 
         self.assertAlmostEqual(
             model.distribution.loss(y=y, z=model.predict(X=self.X), w=self.w).mean(),
-            1.2883775530226058,
+            1.2850441488845914,
             places=3,
         )
 
@@ -157,7 +157,7 @@ class LocalGLMBoosterTestCase(unittest.TestCase):
 
         self.assertAlmostEqual(
             model.distribution.loss(y=y, z=model.predict(X=self.X), w=self.w).mean(),
-            1.0776214781575013,
+            1.0759110652564032,
             places=3,
         )
 
@@ -193,7 +193,6 @@ class LocalGLMBoosterTestCase(unittest.TestCase):
         """
         Test the tuning of the number of estimators
         """
-        w = self.rng.choice([0.5, 1, 2], size=self.X.shape[0])
         y = self.rng.normal(self.z, 1)
         model = LocalGLMBooster(
             distribution="normal",
@@ -204,14 +203,14 @@ class LocalGLMBoosterTestCase(unittest.TestCase):
         tuning_results = tune_n_estimators(
             X=self.X,
             y=y,
-            w=w,
+            w=self.w,
             model=model,
             n_estimators_max=50,
             rng=self.rng,
             n_splits=2,
         )
         n_estimators = tuning_results["n_estimators"]
-        n_estimators_expected = [30, 13]
+        n_estimators_expected = [30, 45]
         for i, kappa in enumerate(n_estimators_expected):
             self.assertEqual(
                 n_estimators_expected[i],
