@@ -1,19 +1,18 @@
-config_name = "real_data_study"
-
-# Import stuff
-import yaml
-import os
-import shutil
-import ssl
-
 import numpy as np
 import pandas as pd
+import ssl
+import os
+import yaml
+import shutil
+
 from sklearn.datasets import fetch_openml
 from sklearn.model_selection import train_test_split
 
-from local_glm_boost.local_glm_boost import LocalGLMBooster
+from local_glm_boost import LocalGLMBooster
 from local_glm_boost.utils.tuning import tune_n_estimators
 from local_glm_boost.utils.logger import LocalGLMBoostLogger
+
+config_name = "real_data_study"
 
 # Set up output folder, configuration file, run_id and logger
 script_dir = os.path.dirname(os.path.realpath(__file__))
@@ -36,6 +35,9 @@ else:
 output_path = os.path.join(folder_path, f"run_{run_id}")
 os.makedirs(output_path)
 
+# Put the config in the output folder
+shutil.copyfile(config_path, f"{output_path}/config.yaml")
+
 # Set up logger
 logger = LocalGLMBoostLogger(
     verbose=2,
@@ -43,183 +45,233 @@ logger = LocalGLMBoostLogger(
 )
 logger.append_format_level(f"run_{run_id}")
 
-
-# Load data
-logger.log("Loading data")
-rng = np.random.default_rng(config["random_state"])
-ssl._create_default_https_context = ssl._create_unverified_context
-df = fetch_openml(data_id=41214, as_frame=True, parser="pandas").data
-df = df.loc[df["IDpol"] >= 24500]
-df = df.loc[df["ClaimNb"] < 5]
-df = df.loc[df["Exposure"] < 1]
-if config["n"] is not None:
-    df = df.sample(config["n"], random_state=rng)
-n = len(df)
-feature_list = config["feature_list"]
-p = len(feature_list)
-
-X = df[feature_list]
-X = X / X.var(axis=0)
-y = df[config["target"]]
-w = df[config["weights"]]
-
-# Train test split
-random_state = rng.integers(0, 2**32 - 1)
-X_train, X_test, y_train, y_test, w_train, w_test = train_test_split(
-    X, y, w, test_size=config["test_size"], random_state=random_state
-)
-
-# Tune n_estimators
-logger.log("Tuning model")
-max_depth = config["max_depth"]
-min_samples_leaf = config["min_samples_leaf"]
+# Load stuff from the config
+logger.log("Loading configuration")
+n = config["n"]
+features_to_use = config["features_to_use"]
+target = config["target"]
+weights = config["weights"]
 distribution = config["distribution"]
 n_estimators_max = config["n_estimators_max"]
 learning_rate = config["learning_rate"]
-n_splits = config["n_splits"]
+min_samples_split = config["min_samples_split"]
+min_samples_leaf = config["min_samples_leaf"]
+max_depth = config["max_depth"]
 glm_init = config["glm_init"]
-features = config["features"]
+random_seed = config["random_seed"]
+n_splits = config["n_splits"]
+test_size = config["test_size"]
+parallel = config["parallel"]
+stratified = config["stratified"]
+n_jobs = config["n_jobs"]
+
+# Load and preprocess data
+logger.log("Loading data")
+ssl._create_default_https_context = ssl._create_unverified_context
+df = fetch_openml(data_id=41214, as_frame=True, parser="pandas").data
+
+df = df.loc[df["IDpol"] >= 24500]
+df = df.loc[df["ClaimNb"] < 5]
+df = df.loc[df["Exposure"] < 1]
+df["Diesel"] = (df["VehGas"] == "'Diesel'").astype(float)
+if n != "all":
+    df = df.sample(n)
+n = len(df)
+
+X = df[features_to_use]
+y = df[target]
+w = df[weights]
+
+X = X / X.var(axis=0)
+
+# Tune n_estimators
+logger.log("Tuning model")
+rng = np.random.default_rng(seed=random_seed)
+X_train, X_test, y_train, y_test, w_train, w_test = train_test_split(
+    X, y, w, test_size=test_size, random_state=rng.integers(0, 10000)
+)
 
 model = LocalGLMBooster(
+    distribution=distribution,
     n_estimators=0,
     learning_rate=learning_rate,
-    max_depth=max_depth,
     min_samples_leaf=min_samples_leaf,
-    distribution=distribution,
+    min_samples_split=min_samples_split,
+    max_depth=max_depth,
     glm_init=glm_init,
-    features=features,
 )
+
 tuning_results = tune_n_estimators(
     X=X_train,
     y=y_train,
+    w=w_train,
     model=model,
     n_estimators_max=n_estimators_max,
-    n_splits=n_splits,
     rng=rng,
+    n_splits=n_splits,
+    parallel=parallel,
+    n_jobs=n_jobs,
+    stratified=stratified,
     logger=logger,
-    parallel=config["parallel"],
-    n_jobs=config["n_jobs"],
-    stratified=config["stratified"],
 )
 n_estimators = tuning_results["n_estimators"]
+loss = tuning_results["loss"]
 
-# Evaluate performance
+# Fit models
 logger.log("Fitting models")
+# Standard model
 model = LocalGLMBooster(
+    distribution="poisson",
     n_estimators=n_estimators,
     learning_rate=learning_rate,
-    max_depth=max_depth,
     min_samples_leaf=min_samples_leaf,
-    distribution="normal",
-    glm_init=glm_init,
-    features=features,
+    max_depth=max_depth,
 )
-model.fit(X=X_train, y=y_train)
-feature_importance = pd.DataFrame(
-    index=[j for j in range(p) if n_estimators[j] > 0], columns=range(p), dtype=float
-)
-for j in feature_importance.index:
-    feature_importance.loc[j] = model.compute_feature_importances(j=j, normalize=True)
+model.fit(X_train, y_train, w_train)
 
-# Also create a light-weight model
-n_estimators_light = [
-    n_estimator if n_estimator > 10 else 0 for n_estimator in n_estimators
-]
-glm_init_light = [np.abs(beta0) >= 0.05 for beta0 in model.beta0]
+# Light model
+feature_importances = {
+    coefficient: model.compute_feature_importances(j=coefficient)
+    for coefficient in features_to_use
+    if n_estimators[coefficient] > 0
+}
 features_light = {
     coefficient: [
         feature
-        for feature in feature_importance.loc[coefficient].index
-        if feature_importance.loc[coefficient][feature] >= 0.05
+        for feature in features_to_use
+        if feature_importances[coefficient][feature] > 0.05
     ]
-    for coefficient in [
-        coefficient
-        for coefficient in range(0, p)
-        if n_estimators_light[coefficient] > 0
-    ]
+    for coefficient in feature_importances.keys()
+}
+
+glm_init_light = {
+    coefficient: np.abs(model.beta0[i]) > 0.05
+    for i, coefficient in enumerate(features_to_use)
 }
 
 model_light = LocalGLMBooster(
-    n_estimators=n_estimators_light,
+    distribution="poisson",
+    n_estimators=n_estimators,
     learning_rate=learning_rate,
-    max_depth=max_depth,
     min_samples_leaf=min_samples_leaf,
-    distribution="normal",
-    glm_init=glm_init_light,
+    max_depth=max_depth,
     features=features_light,
+    glm_init=glm_init_light,
 )
+model_light.fit(X=X_train, y=y_train, w=w_train)
 
-model_light.fit(X=X_train.values, y=y_train.values)
+# Intercept model
+to_minimize = lambda z: model.distribution.loss(y=y_train, z=z, w=w_train).mean()
+z0 = np.log((y_train / w_train).mean())
+from scipy.optimize import minimize
 
-feature_importance_light = pd.DataFrame(
-    index=[j for j in range(p) if n_estimators_light[j] > 0],
-    columns=range(p),
+res = minimize(
+    to_minimize, z0, method="nelder-mead", options={"xatol": 1e-8, "disp": False}
+)
+z_opt = res.x
+
+# Summarize results
+logger.log("Summarizing results")
+
+
+# Define the Poisson deviance
+def deviance(y, z, w):
+    y_log_y = np.zeros_like(y)
+    y_log_y[y > 0] = y[y > 0] * np.log(y[y > 0])
+    return 2 * (y_log_y - y * (np.log(w) + z + 1) + w * np.exp(z))
+
+
+# Poisson deviance
+df_loss = pd.DataFrame(
+    index=["intercept", "glm", "local-glm-boost", "local-glm-boost-light"],
+    columns=["train", "test"],
     dtype=float,
 )
-for j in feature_importance_light.index:
-    feature_importance_light.loc[j] = model_light.compute_feature_importances(
-        j=j, normalize=True
-    )
+df_loss.loc["intercept", "train"] = deviance(y=y_train, z=z_opt, w=w_train).mean()
+df_loss.loc["intercept", "test"] = deviance(y=y_test, z=z_opt, w=w_test).mean()
+df_loss.loc["glm", "train"] = deviance(
+    y=y_train, z=model.z0 + (model.beta0 * X_train).sum(axis=1), w=w_train
+).mean()
+df_loss.loc["glm", "test"] = deviance(
+    y=y_test, z=model.z0 + (model.beta0 * X_test).sum(axis=1), w=w_test
+).mean()
+df_loss.loc["local-glm-boost", "train"] = deviance(
+    y=y_train, z=model.predict(X_train), w=w_train
+).mean()
+df_loss.loc["local-glm-boost", "test"] = deviance(
+    y=y_test, z=model.predict(X_test), w=w_test
+).mean()
+df_loss.loc["local-glm-boost-light", "train"] = deviance(
+    y=y_train, z=model_light.predict(X_train), w=w_train
+).mean()
+df_loss.loc["local-glm-boost-light", "test"] = deviance(
+    y=y_test, z=model_light.predict(X_test), w=w_test
+).mean()
 
-mu_hat = pd.DataFrame(
-    columns=["intercept", "glm", "local_glm_boost", "local_glm_boost_light"],
-)
-mu_hat["intercept"] = y_train.mean() * np.ones(len(y_test))
-mu_hat["glm"] = model.z0 + model.beta0.reshape(p) @ X_test.T
-mu_hat["local_glm_boost"] = model.predict(X_test)
-mu_hat["local_glm_boost_light"] = model_light.predict(X_test)
-
-results = pd.DataFrame(
-    index=["intercept", "glm", "local_glm_boost", "local_glm_boost_light"],
-    columns=["Training MSE", "Test MSE"],
+# Negative log-likelihood
+df_loss_2 = pd.DataFrame(
+    index=["intercept", "glm", "local-glm-boost", "local-glm-boost-light"],
+    columns=["train", "test"],
     dtype=float,
 )
-results.loc["intercept"] = [
-    np.mean((y_train.mean() - y_train) ** 2),
-    np.mean((y_train.mean() - y_test) ** 2),
-]
-results.loc["glm"] = [
-    np.mean((model.z0 + model.beta0.reshape(p) @ X_train.T - y_train) ** 2),
-    np.mean((model.z0 + model.beta0.reshape(p) @ X_test.T - y_test) ** 2),
-]
-results.loc["local_glm_boost"] = [
-    np.mean((model.predict(X_train) - y_train) ** 2),
-    np.mean((model.predict(X_test) - y_test) ** 2),
-]
+df_loss_2.loc["intercept", "train"] = model.distribution.loss(
+    y=y_train, z=z_opt, w=w_train
+).mean()
+df_loss_2.loc["intercept", "test"] = model.distribution.loss(
+    y=y_test, z=z_opt, w=w_test
+).mean()
+df_loss_2.loc["glm", "train"] = model.distribution.loss(
+    y=y_train, z=model.z0 + (model.beta0 * X_train).sum(axis=1), w=w_train
+).mean()
+df_loss_2.loc["glm", "test"] = model.distribution.loss(
+    y=y_test, z=model.z0 + (model.beta0 * X_test).sum(axis=1), w=w_test
+).mean()
+df_loss_2.loc["local-glm-boost", "train"] = model.distribution.loss(
+    y=y_train, z=model.predict(X_train), w=w_train
+).mean()
+df_loss_2.loc["local-glm-boost", "test"] = model.distribution.loss(
+    y=y_test, z=model.predict(X_test), w=w_test
+).mean()
+df_loss_2.loc["local-glm-boost-light", "train"] = model.distribution.loss(
+    y=y_train, z=model_light.predict(X_train), w=w_train
+).mean()
+df_loss_2.loc["local-glm-boost-light", "test"] = model.distribution.loss(
+    y=y_test, z=model_light.predict(X_test), w=w_test
+).mean()
 
-results.loc["local_glm_boost_light"] = [
-    np.mean((model_light.predict(X_train) - y_train) ** 2),
-    np.mean((model_light.predict(X_test) - y_test) ** 2),
-]
+# Create dataframes with the results
+# Crate a large df with both loss measures
+df_loss_all = pd.concat([df_loss, df_loss_2], axis=1, keys=["deviance", "loss"])
 
-# Save results
-shutil.copyfile(config_path, f"{output_path}/config.yaml")
+# Save the total CV losses
+loss_train = pd.DataFrame(data=np.sum(loss["train"], axis=0), columns=features_to_use)
+loss_valid = pd.DataFrame(data=np.sum(loss["valid"], axis=0), columns=features_to_use)
 
-logger.log("Saving results...")
-results.to_csv(f"{output_path}/MSE.csv")
-for data_set in ["train", "valid"]:
-    pd.DataFrame(np.sum(tuning_results["loss"][data_set], axis=0)).to_csv(
-        f"{output_path}/tuning_loss_{data_set}.csv"
-    )
+# Crate a dataframe with all models predictions on the validation data
+mu_hat = pd.DataFrame(columns=df_loss.index, index=y_test.index)
+mu_hat["true"] = y_test / w_test
+mu_hat["intercept"] = np.exp(z_opt) * np.ones(len(y_test))
+mu_hat["glm"] = np.exp(model.z0 + (model.beta0 * X_test).sum(axis=1))
+mu_hat["local-glm-boost"] = np.exp(model.predict(X_test))
+mu_hat["local-glm-boost-light"] = np.exp(model_light.predict(X_test))
 
-pd.DataFrame(n_estimators).to_csv(f"{output_path}/n_estimators.csv")
-beta0 = pd.DataFrame(columns=["local_glm_boost", "local_glm_boost_light"])
-beta0["local_glm_boost"] = model.beta0
-beta0["local_glm_boost_light"] = model_light.beta0
-beta0.to_csv(f"{output_path}/beta0.csv")
+# Create a dataframe with feature importances
+feature_importances = pd.DataFrame(index=features_to_use, columns=features_to_use)
+for feature in features_to_use:
+    if n_estimators[feature] != 0:
+        feature_importances[feature] = model.compute_feature_importances(feature)
 
-feature_importance.index = [f"beta_{j}" for j in feature_importance.index]
-feature_importance.columns = [f"x_{j}" for j in feature_importance.columns]
-feature_importance.to_csv(f"{output_path}/feature_importance.csv")
+# Make a dataframe with n_esimators and inital beta values
+kappa_beta = pd.DataFrame(index=features_to_use, columns=["n_estimators", "beta0"])
+kappa_beta["n_estimators"] = n_estimators
+kappa_beta["beta0"] = model.beta0
 
-feature_importance_light.index = [f"beta_{j}" for j in feature_importance_light.index]
-feature_importance_light.columns = [f"x_{j}" for j in feature_importance_light.columns]
-feature_importance_light.to_csv(f"{output_path}/feature_importance_light.csv")
-
+# Save the results as csv files
+df_loss_all.to_csv(f"{output_path}/df_loss_all.csv")
+loss_train.to_csv(f"{output_path}/loss_train.csv")
+loss_valid.to_csv(f"{output_path}/loss_valid.csv")
 mu_hat.to_csv(f"{output_path}/mu_hat.csv")
+feature_importances.to_csv(f"{output_path}/feature_importances.csv")
+kappa_beta.to_csv(f"{output_path}/kappa_beta.csv")
 
-os.makedirs(f"{output_path}/beta_hat", exist_ok=True)
-for model_name in beta_hat.keys():
-    beta_hat[model_name].to_csv(f"{output_path}/beta_hat/{model_name}.csv")
-
-logger.log_finish()
+logger.log("Done!")

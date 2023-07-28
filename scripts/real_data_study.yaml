@@ -1,18 +1,19 @@
 n: 10000
-feature_list:
+features_to_use:
   - VehPower
   - VehAge
   - DrivAge
   - BonusMalus
   - Density
-random_state: 11
+  - Diesel
+random_seed: 11
 target: ClaimNb
 weights: Exposure
 
 distribution: poisson
 
 learning_rate: 0.001
-n_estimators_max: 100
+n_estimators_max: 10
 min_samples_split: 30
 min_samples_leaf: 25
 max_depth: 2
