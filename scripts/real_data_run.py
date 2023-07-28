@@ -259,7 +259,7 @@ mu_hat["local-glm-boost-light"] = np.exp(model_light.predict(X_test))
 feature_importances = pd.DataFrame(index=features_to_use, columns=features_to_use)
 for feature in features_to_use:
     if n_estimators[feature] != 0:
-        feature_importances[feature] = model.compute_feature_importances(feature)
+        feature_importances.loc[feature] = model.compute_feature_importances(feature)
 
 # Make a dataframe with n_esimators and inital beta values
 kappa_beta = pd.DataFrame(index=features_to_use, columns=["n_estimators", "beta0"])

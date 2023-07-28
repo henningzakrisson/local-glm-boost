@@ -12,8 +12,8 @@ weights: Exposure
 
 distribution: poisson
 
-learning_rate: 0.001
-n_estimators_max: 1000
+learning_rate: 0.01
+n_estimators_max: 100
 min_samples_split: 30
 min_samples_leaf: 25
 max_depth: 2
