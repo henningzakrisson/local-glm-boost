@@ -1,4 +1,4 @@
-n: 10000
+n: all
 features_to_use:
   - VehPower
   - VehAge
@@ -13,7 +13,7 @@ weights: Exposure
 distribution: poisson
 
 learning_rate: 0.001
-n_estimators_max: 10
+n_estimators_max: 1000
 min_samples_split: 30
 min_samples_leaf: 25
 max_depth: 2
@@ -21,7 +21,7 @@ glm_init: true
 features: null
 
 test_size: 0.2
-n_splits: 2
+n_splits: 5
 parallel: true
 n_jobs: -1
 stratified: true
