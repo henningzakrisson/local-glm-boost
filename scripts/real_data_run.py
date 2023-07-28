@@ -68,12 +68,12 @@ n_jobs = config["n_jobs"]
 # Load and preprocess data
 logger.log("Loading data")
 ssl._create_default_https_context = ssl._create_unverified_context
-df = fetch_openml(data_id=41214, as_frame=True, parser="pandas").data
+df = fetch_openml(data_id=41214, as_frame=True).data
 
 df = df.loc[df["IDpol"] >= 24500]
 df = df.loc[df["ClaimNb"] < 5]
 df = df.loc[df["Exposure"] < 1]
-df["Diesel"] = (df["VehGas"] == "'Diesel'").astype(float)
+df["Diesel"] = (df["VehGas"] == "Diesel").astype(float)
 if n != "all":
     df = df.sample(n)
 n = len(df)
