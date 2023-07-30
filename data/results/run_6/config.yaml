@@ -6,9 +6,6 @@ features_to_use:
   - BonusMalus
   - Density
   - Diesel
-  - Area
-  - VehBrand
-  - Region
 random_seed: 11
 target: ClaimNb
 weights: Exposure
@@ -16,7 +13,7 @@ weights: Exposure
 distribution: poisson
 
 learning_rate: 0.01
-n_estimators_max: 10
+n_estimators_max: 1000
 min_samples_split: 20
 min_samples_leaf: 20
 max_depth: 2

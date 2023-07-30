@@ -70,15 +70,33 @@ logger.log("Loading data")
 ssl._create_default_https_context = ssl._create_unverified_context
 df = fetch_openml(data_id=41214, as_frame=True).data
 
-df = df.loc[df["IDpol"] >= 24500]
-df = df.loc[df["ClaimNb"] < 5]
-df = df.loc[df["Exposure"] < 1]
+# df = df.loc[df["IDpol"] >= 24500]
+df = df.loc[df["ClaimNb"] <= 5]
+# df = df.loc[df["Exposure"] < 1]
 df["Diesel"] = (df["VehGas"] == "Diesel").astype(float)
+df["Area"].replace(
+    {
+        "A": 1,
+        "B": 2,
+        "C": 3,
+        "D": 4,
+        "E": 5,
+        "F": 6,
+    },
+    inplace=True,
+)
+for categorical_feature in ["VehBrand", "Region"]:
+    if categorical_feature in features_to_use:
+        dummies = pd.get_dummies(df[categorical_feature], prefix=categorical_feature)
+        df = pd.concat([df, dummies], axis=1)
+        features_to_use.remove(categorical_feature)
+        features_to_use += list(dummies.columns)
+
 if n != "all":
     df = df.sample(n)
 n = len(df)
 
-X = df[features_to_use]
+X = df[features_to_use].astype(float)
 y = df[target]
 w = df[weights]
 
