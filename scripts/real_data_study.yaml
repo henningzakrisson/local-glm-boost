@@ -16,7 +16,7 @@ weights: Exposure
 distribution: poisson
 
 learning_rate: 0.01
-n_estimators_max: 10
+n_estimators_max: 1000
 min_samples_split: 20
 min_samples_leaf: 20
 max_depth: 2
@@ -24,7 +24,7 @@ glm_init: true
 features: null
 
 test_size: 0.1
-n_splits: 5
+n_splits: 2
 parallel: true
 n_jobs: -1
 stratified: true
