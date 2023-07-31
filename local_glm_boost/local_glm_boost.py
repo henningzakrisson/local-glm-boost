@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 from scipy.optimize import minimize
 
-from .utils.distributions import Distribution, initiate_distribution
+from .utils.distributions import initiate_distribution
 from .utils.fix_datatype import fix_datatype
 from .boosting_tree import BoostingTree
 
@@ -12,7 +12,7 @@ from .boosting_tree import BoostingTree
 class LocalGLMBooster:
     def __init__(
         self,
-        distribution: Union[Distribution, str] = "normal",
+        distribution: str = "normal",
         n_estimators: Union[List[int], int, pd.Series] = 100,
         learning_rate: Union[List[float], float] = 0.1,
         min_samples_split: Union[List[int], int] = 2,
@@ -33,6 +33,7 @@ class LocalGLMBooster:
         :param glm_init: Whether to initialize the model with a GLM fit.
         :param features: Features to use for each coefficient. A dictionary with the coefficient name or number as key and a list of feature names or numbers as value.
         """
+        self.distribution = initiate_distribution(distribution)
         self.n_estimators = n_estimators
         self.learning_rate = learning_rate
         self.min_samples_split = min_samples_split
@@ -40,11 +41,6 @@ class LocalGLMBooster:
         self.max_depth = max_depth
         self.glm_init = glm_init
         self.features = features
-
-        if isinstance(distribution, str):
-            self.distribution = initiate_distribution(distribution)
-        else:
-            self.distribution = distribution
 
         self.p = None
         self.beta0 = None
@@ -67,8 +63,10 @@ class LocalGLMBooster:
         """
         if w is None:
             w = np.ones_like(y)
+
         self._adjust_feature_selection(X=X)
         X, y, w = fix_datatype(X=X, y=y, w=w)
+
         self.p = X.shape[1]
         self._adjust_hyperparameters()
         self.z0, self.beta0 = self._adjust_initializer(X=X, y=y, w=w)
@@ -270,7 +268,7 @@ class LocalGLMBooster:
         :param X: Input data matrix of shape (n, p).
         :return: Predicted response values for the input data of shape (n,).
         """
-        X_fixed, _, _ = fix_datatype(X=X, feature_names=self.feature_names)
+        X_fixed = fix_datatype(X=X, feature_names=self.feature_names)
         beta = self.predict_parameter(X=X_fixed)
         z_hat = self.z0 + np.sum(beta.T * X_fixed, axis=1)
         if isinstance(X, pd.DataFrame):
