@@ -53,7 +53,7 @@ class BoostingTree(DecisionTreeRegressor):
         :param y: The target values.
         :param z: The predicted parameter values from the previous iteration.
         :param j: The index of the current iteration.
-        :param features: The indices of the feature_selection to use for the tree.
+        :param features: The indices of the features to use for the tree.
         :param w: The weights of the observations. If `None`, all weights are set to 1.
         """
         if w is None:
@@ -81,7 +81,7 @@ class BoostingTree(DecisionTreeRegressor):
         :param z: The current parameter estimates
         :param w: The weights of the observations.
         :param j: Parameter dimension to update
-        :param features: The indices of the feature_selection to use for the tree.
+        :param features: The indices of the features to use for the tree.
         :param node_index: The index of the node to update
         """
         node_loss = lambda step: self.distribution.loss(
