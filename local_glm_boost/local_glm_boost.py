@@ -1,4 +1,5 @@
 from typing import TypeVar, List, Union, Optional, Tuple, Dict
+from joblib import Parallel, delayed
 
 import numpy as np
 import pandas as pd
@@ -63,6 +64,7 @@ class LocalGLMBooster:
         X: np.ndarray,
         y: np.ndarray,
         w: Optional[np.ndarray] = None,
+        cyclical: bool = True,
     ):
         """
         Fit the model to the data.
@@ -70,6 +72,7 @@ class LocalGLMBooster:
         :param X: Input data matrix of shape (n, p).
         :param y: True response values for the input data of shape (n,).
         :param w: Weights of the observations. If `None`, all weights are set to 1.
+        :param cyclical: Whether to fit the trees in a cyclical order. Otherwise, training will be parallelized.
         """
         self._initialize_feature_metadata(X=X)
         self._initialize_hyperparameters()
@@ -80,17 +83,64 @@ class LocalGLMBooster:
         self.z0, self.beta0 = self._adjust_glm_model(X=X, y=y, z=0, w=w)
         z = self.z0 + (self.beta0.T @ X.T).T.reshape(-1)
 
+        def fit_tree(
+            tree,
+            j,
+            X,
+            y,
+            z,
+            w,
+            k,
+            n_estimators,
+            features,
+        ) -> Tuple[BoostingTree, np.ndarray]:
+            if k < n_estimators:
+                tree.fit_gradients(X=X, y=y, z=z, w=w, j=j, features=features)
+            return tree
+
         for k in range(max(self.n_estimators.values())):
-            for j in range(self.p):
-                if k < self.n_estimators[j]:
-                    self.trees[j][k].fit_gradients(
-                        X=X, y=y, z=z, w=w, j=j, features=self.feature_selection[j]
+            if cyclical:
+                for j in range(self.p):
+                    self.trees[k][j] = fit_tree(
+                        tree=self.trees[k][j],
+                        j=j,
+                        X=X,
+                        y=y,
+                        z=z,
+                        w=w,
+                        k=k,
+                        n_estimators=self.n_estimators[j],
+                        features=self.feature_selection[j],
                     )
                     z += (
                         self.learning_rate[j]
-                        * self.trees[j][k].predict(X[:, self.feature_selection[j]])
+                        * self.trees[k][j].predict(X=X[:, self.feature_selection[j]])
                         * X[:, j]
                     )
+            else:
+                self.trees[k] = Parallel(n_jobs=-1)(
+                    delayed(fit_tree)(
+                        tree=self.trees[k][j],
+                        j=j,
+                        X=X,
+                        y=y,
+                        z=z,
+                        w=w,
+                        k=k,
+                        n_estimators=self.n_estimators[j],
+                        features=self.feature_selection[j],
+                    )
+                    for j in range(self.p)
+                )
+                z += np.array(
+                    [
+                        self.learning_rate[j]
+                        * self.trees[k][j].predict(X=X[:, self.feature_selection[j]])
+                        * X[:, j]
+                        for j in range(self.p)
+                    ]
+                ).sum(axis=0)
+
         # Re-fit the initiating model given the tree predictions
         self.z0, self.beta0 = self._adjust_glm_model(
             X=X, y=y, z=z - self.z0 - (self.beta0.T @ X.T).T.reshape(-1), w=w
@@ -144,9 +194,9 @@ class LocalGLMBooster:
                     min_samples_split=self.min_samples_split[j],
                     min_samples_leaf=self.min_samples_leaf[j],
                 )
-                for _ in range(self.n_estimators[j])
+                for j in range(self.p)
             ]
-            for j in range(self.p)
+            for _ in range(max(self.n_estimators.values()))
         ]
 
     def _adjust_glm_model(
@@ -204,15 +254,19 @@ class LocalGLMBooster:
         X, y, w = fix_datatype(X=X, y=y, w=w)
         if z is None:
             z = self.predict(X)
-        self.trees[j].append(
-            BoostingTree(
-                distribution=self.distribution,
-                max_depth=self.max_depth[j],
-                min_samples_split=self.min_samples_split[j],
-                min_samples_leaf=self.min_samples_leaf[j],
+        if self.n_estimators[j] == max(self.n_estimators.values()):
+            self.trees.append(
+                [
+                    BoostingTree(
+                        distribution=self.distribution,
+                        max_depth=self.max_depth[j],
+                        min_samples_split=self.min_samples_split[j],
+                        min_samples_leaf=self.min_samples_leaf[j],
+                    )
+                    for _ in range(self.n_estimators[j])
+                ]
             )
-        )
-        self.trees[j][-1].fit_gradients(
+        self.trees[self.n_estimators[j] - 1].fit_gradients(
             X=X, y=y, z=z, w=w, j=j, features=self.feature_selection[j]
         )
         self.n_estimators[j] += 1
@@ -232,7 +286,7 @@ class LocalGLMBooster:
                 sum(
                     [
                         self.learning_rate[j]
-                        * self.trees[j][k].predict(X[:, self.feature_selection[j]])
+                        * self.trees[k][j].predict(X[:, self.feature_selection[j]])
                         for k in range(self.n_estimators[j])
                     ]
                 )
@@ -299,8 +353,9 @@ class LocalGLMBooster:
         else:
             j = self.feature_names.index(feature)
 
+            j_trees = [trees[j] for trees in self.trees[: self.n_estimators[j]]]
             feature_importances_from_trees = np.array(
-                [tree.compute_feature_importances() for tree in self.trees[j]]
+                [tree.compute_feature_importances() for tree in j_trees]
             ).sum(axis=0)
             feature_importances = {}
             for feature_name in self.feature_names:
