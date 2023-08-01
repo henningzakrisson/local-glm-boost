@@ -1,7 +1,6 @@
-from typing import Type, Union, List, Optional
+from typing import Type, Union
 
 import numpy as np
-from scipy.optimize import minimize
 
 
 def inherit_docstrings(cls: Type) -> Type:
