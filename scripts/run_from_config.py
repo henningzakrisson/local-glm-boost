@@ -92,7 +92,7 @@ n_estimators_max = config["n_estimators_max"]
 learning_rate = config["learning_rate"]
 n_splits = config["n_splits"]
 glm_init = config["glm_init"]
-features = config["features"]
+features = config["feature_selection"]
 
 model = LocalGLMBooster(
     n_estimators=0,
