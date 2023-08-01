@@ -29,18 +29,18 @@ model = LocalGLMBooster(
     max_depth=2,
 )
 start_time = time.time()
-model.fit(X=X, y=y, w=w, cyclical = True)
+model.fit(X=X, y=y, w=w, cyclical=False)
 stop_time = time.time()
 
 print(f"Model fit time: {stop_time - start_time}")
 
 loss = model.distribution.loss(
-      y = y,
-      z = model.predict(X=X),
-      w = w,
+    y=y,
+    z=model.predict(X=X),
+    w=w,
 ).mean()
 print(f"Model loss: {loss}")
 
 for j in range(p):
-    feature_importances = model.compute_feature_importances(feature = j)
+    feature_importances = model.compute_feature_importances(feature=j)
     print(f"Feature {j} importance: {feature_importances}")
