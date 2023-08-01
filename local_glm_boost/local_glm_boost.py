@@ -6,12 +6,13 @@ from scipy.optimize import minimize
 
 from .utils.distributions import initiate_distribution
 from .utils.fix_datatype import fix_datatype
+from .utils.hyperparameters import HyperparameterDict, FeatureSelectionDict
 from .boosting_tree import BoostingTree
 
 
 T = TypeVar("T")
 Hyperparameter = Union[T, List[T], Dict[Union[int, str], T]]
-FeatureDict = Union[
+FeatureSelection = Union[
     Dict[Union[int, str], List[Union[int, str]]],
     Dict[Union[int, str], Dict[Union[int, str], List[Union[int, str]]]],
 ]
@@ -27,7 +28,7 @@ class LocalGLMBooster:
         min_samples_leaf: Hyperparameter[int] = 1,
         max_depth: Hyperparameter[int] = 3,
         glm_init: Hyperparameter[bool] = True,
-        feature_selection: Optional[FeatureDict] = None,
+        feature_selection: Optional[FeatureSelection] = None,
     ):
         """
         Initialize a LocalGLMBooster model.
@@ -70,13 +71,13 @@ class LocalGLMBooster:
         :param y: True response values for the input data of shape (n,).
         :param w: Weights of the observations. If `None`, all weights are set to 1.
         """
-        self.feature_names = self._get_feature_names(X=X)
-        X, y, w = fix_datatype(X=X, y=y, w=w if w is not None else np.ones_like(y))
-        self.p = X.shape[1]
-        self._adjust_hyperparameters()
-        self.z0, self.beta0 = self._adjust_initializer(X=X, y=y, w=w)
-        self._initiate_trees()
+        self._initialize_feature_metadata(X=X)
+        self._initialize_hyperparameters()
+        self._initialize_trees()
 
+        X, y, w = fix_datatype(X=X, y=y, w=w if w is not None else np.ones_like(y))
+
+        self.z0, self.beta0 = self._adjust_glm_model(X=X, y=y, z=0, w=w)
         z = self.z0 + (self.beta0.T @ X.T).T.reshape(-1)
 
         for k in range(max(self.n_estimators.values())):
@@ -91,71 +92,45 @@ class LocalGLMBooster:
                         * X[:, j]
                     )
 
-    def _get_feature_names(
-        self, X: Union[np.ndarray, pd.DataFrame]
-    ) -> List[Union[int, str]]:
+    def _initialize_feature_metadata(self, X: Union[np.ndarray, pd.DataFrame]) -> None:
         """Get the feature names from the input data.
         If the input data is a DataFrame, the column names are returned.
         Otherwise, the features are named 0, 1, ..., p-1.
         """
         if isinstance(X, pd.DataFrame):
-            return list(X.columns)
+            self.feature_names = list(X.columns)
         else:
-            return list(np.arange(X.shape[1]))
+            self.feature_names = list(np.arange(X.shape[1]))
+        self.p = len(self.feature_names)
 
-    def _adjust_hyperparameters(self) -> None:
+    def _initialize_hyperparameters(self) -> None:
         """Adjust hyperparameters given the covariate dimensions.
         Since the accepted format of the hyperparameters are floats, lists, or Series, they are here adjusted
-        to lists of length p. The covariate is adjusted to comply with the data in case of a Series.
+        to dicts with p int-valued keys corresponding to the covariate order.
         """
+        self.feature_selection = FeatureSelectionDict(
+            feature_selection=self.feature_selection, feature_names=self.feature_names
+        )
+        self.n_estimators = HyperparameterDict(
+            parameter_value=self.n_estimators, feature_names=self.feature_names
+        )
+        self.learning_rate = HyperparameterDict(
+            parameter_value=self.learning_rate, feature_names=self.feature_names
+        )
+        self.min_samples_split = HyperparameterDict(
+            parameter_value=self.min_samples_split, feature_names=self.feature_names
+        )
+        self.min_samples_leaf = HyperparameterDict(
+            parameter_value=self.min_samples_leaf, feature_names=self.feature_names
+        )
+        self.max_depth = HyperparameterDict(
+            parameter_value=self.max_depth, feature_names=self.feature_names
+        )
+        self.glm_init = HyperparameterDict(
+            parameter_value=self.glm_init, feature_names=self.feature_names
+        )
 
-        # TODO: Replace with a type check and check if it is a Hyperparameter?
-        for parameter_name in [
-            "n_estimators",
-            "learning_rate",
-            "min_samples_split",
-            "min_samples_leaf",
-            "max_depth",
-            "glm_init",
-            "feature_selection",
-        ]:
-            parameter_value = getattr(self, parameter_name)
-            if isinstance(parameter_value, Dict):
-                new_hyperparam_dict = {}
-                for j, feature_name in enumerate(self.feature_names):
-                    if feature_name not in parameter_value.keys():
-                        raise ValueError(
-                            f"Hyperparameter {parameter_name} missing for feature {feature_name}"
-                        )
-                    # Adjust feature names for feature selection
-                    if parameter_name == "feature_selection":
-                        new_hyperparam_dict[j] = [
-                            self.feature_names.index(feature)
-                            for feature in parameter_value[feature_name]
-                        ]
-                    else:
-                        new_hyperparam_dict[j] = parameter_value[feature_name]
-                    setattr(self, parameter_name, new_hyperparam_dict)
-            elif isinstance(parameter_value, List):
-                if len(parameter_value) != self.p:
-                    raise ValueError(
-                        f"Hyperparameter {parameter_name} not of length {self.p}"
-                    )
-                setattr(
-                    self, parameter_name, {j: parameter_value[j] for j in range(self.p)}
-                )
-            elif parameter_name == "feature_selection" and parameter_value is None:
-                setattr(
-                    self,
-                    parameter_name,
-                    {j: [k for k in range(self.p)] for j in range(self.p)},
-                )
-            else:
-                setattr(
-                    self, parameter_name, {j: parameter_value for j in range(self.p)}
-                )
-
-    def _initiate_trees(self):
+    def _initialize_trees(self):
         """Initiate the trees."""
         self.trees = [
             [
@@ -170,12 +145,12 @@ class LocalGLMBooster:
             for j in range(self.p)
         ]
 
-    def _adjust_initializer(
+    def _adjust_glm_model(
         self,
         X: np.ndarray,
         y: np.ndarray,
-        z: Optional[np.ndarray] = None,
-        w: Optional[np.ndarray] = None,
+        z: Union[np.ndarray, float],
+        w: np.ndarray,
     ) -> Tuple[float, np.ndarray]:
         """
         Adjust the initalization of the model.
@@ -184,14 +159,10 @@ class LocalGLMBooster:
 
         :param X: The input training data for the model as a numpy array.
         :param y: The target values.
-        :param z: The current parameter estimates. If None, the initial parameter estimates are assumed to be zero.
-        :param w: The weights of the observations. If None, all weights are set to 1.
+        :param z: The current parameter estimates.
+        :param w: The weights of the observations.
         :return: The initial parameter estimates.
         """
-        if w is None:
-            w = np.ones_like(y)
-        if z is None:
-            z = np.zeros(X.shape[0])
         features_to_initiate = [glm_init for glm_init in self.glm_init.values()]
         to_minimize = lambda z0_and_beta: self.distribution.loss(
             y=y,
