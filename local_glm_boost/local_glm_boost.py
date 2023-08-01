@@ -91,6 +91,10 @@ class LocalGLMBooster:
                         * self.trees[j][k].predict(X[:, self.feature_selection[j]])
                         * X[:, j]
                     )
+        # Re-fit the initiating model given the tree predictions
+        self.z0, self.beta0 = self._adjust_glm_model(
+            X=X, y=y, z=z - self.z0 - (self.beta0.T @ X.T).T.reshape(-1), w=w
+        )
 
     def _initialize_feature_metadata(self, X: Union[np.ndarray, pd.DataFrame]) -> None:
         """Get the feature names from the input data.
