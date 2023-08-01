@@ -16,7 +16,7 @@ def fix_datatype(
     :param X: Input data matrix of shape (n_samples, n_features).
     :param y: True response values for the input data.
     :param w: Weights of the observations.
-    :param feature_names: Names of the feature_selection in X.
+    :param feature_names: Names of the features in X.
     """
     if isinstance(X, pd.DataFrame):
         if feature_names is not None:
