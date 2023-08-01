@@ -257,44 +257,58 @@ class LocalGLMBooster:
             return z_hat
 
     def compute_feature_importances(
-        self, j: Union[str, int] = "all", normalize: bool = True
-    ) -> np.ndarray:
+        self,
+        feature: Union[str, int] = "all",
+        normalize: bool = True,
+    ) -> Union[
+        Dict[Union[str, int], float],
+        Dict[Union[str, int], Dict[Union[str, int], float]],
+    ]:
         """
         Computes the feature importance for parameter all feature_selection for dimension j
-        If j is 'all', the feature importance is calculated over all parameter dimensions.
-        Note that the feature importance is calculated for regression attentions beta_j(x) meaning that the GLM parameters are not taken into account.
 
-        :param j: Parameter dimension. If 'all', calculate importance over all parameter dimensions.
-        :return: Feature importance of shape (n_features,)
+        :param feature: feature for which to compute importance. "all" for all, "cumulative" for summed importance
+        :param normalize: normalize to sum up to 1
+        :return: Feature importance as a dict with names and importances, or dict of dicts if feature is "all"
         """
-        if j == "all":
-            feature_importances = np.zeros(self.p)
-            for j in range(self.p):
-                feature_importances_from_trees = np.array(
-                    [tree.compute_feature_importances() for tree in self.trees[j]]
-                ).sum(axis=0)
-                feature_importances[
-                    self.feature_selection[j]
-                ] += feature_importances_from_trees
-        else:
-            if isinstance(j, str):
-                j = self.feature_names.index(j)
+        if feature == "all":
+            return {
+                feature_name: self.compute_feature_importances(
+                    feature=feature_name, normalize=normalize
+                )
+                for feature_name in self.feature_names
+            }
 
-            feature_importances = np.zeros(self.p)
-            feature_importances_from_trees = np.array(
-                [tree.compute_feature_importances() for tree in self.trees[j]]
-            ).sum(axis=0)
-
-            feature_importances[
-                self.feature_selection[j]
-            ] = feature_importances_from_trees
-        if normalize:
-            feature_importances /= feature_importances.sum()
-
-        if self.feature_names is not None:
-            feature_importances = pd.Series(
-                feature_importances, index=self.feature_names
+        if feature == "cumulative":
+            feature_importances_all = self.compute_feature_importances(
+                feature="all", normalize=False
             )
+            feature_importances = {
+                feature_name: sum(vals.values())
+                for feature_name, vals in feature_importances_all.items()
+            }
+            if normalize:
+                total = sum(feature_importances.values())
+                return {
+                    key: value / total for key, value in feature_importances.items()
+                }
+
+        j = self.feature_names.index(feature)
+        feature_importances_from_trees = sum(
+            tree.compute_feature_importances() for tree in self.trees[j]
+        )
+        feature_importances = {
+            feature_name: feature_importances_from_trees[
+                self.feature_selection[j].index(self.feature_names.index(feature_name))
+            ]
+            if feature_name in self.feature_selection[j]
+            else 0
+            for feature_name in self.feature_names
+        }
+        if normalize:
+            total = sum(feature_importances.values())
+            return {key: value / total for key, value in feature_importances.items()}
+
         return feature_importances
 
     def reset(self, n_estimators: Optional[Union[int, List[int]]] = None) -> None:
