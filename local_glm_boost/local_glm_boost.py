@@ -267,48 +267,51 @@ class LocalGLMBooster:
         """
         Computes the feature importance for parameter all feature_selection for dimension j
 
-        :param feature: feature for which to compute importance. "all" for all, "cumulative" for summed importance
-        :param normalize: normalize to sum up to 1
-        :return: Feature importance as a dict with names and importances, or dict of dicts if feature is "all"
+        :param feature: feature for which to compute importance of (other) features. If all, compute for all features,
+        if "cumulative", compute for all features and sum over all features
+        :param normalize: normalize feature importance to sum up to 1
+        :return: Feature importance as a dict with feature names and importances, or dict of dicts if feature is "all"
         """
         if feature == "all":
-            return {
+            feature_importances = {
                 feature_name: self.compute_feature_importances(
                     feature=feature_name, normalize=normalize
                 )
                 for feature_name in self.feature_names
             }
-
-        if feature == "cumulative":
+        elif feature == "cumulative":
             feature_importances_all = self.compute_feature_importances(
                 feature="all", normalize=False
             )
             feature_importances = {
-                feature_name: sum(vals.values())
-                for feature_name, vals in feature_importances_all.items()
+                feature_name: sum(feature_importances_all[feature_name].values())
+                for feature_name in self.feature_names
             }
             if normalize:
-                total = sum(feature_importances.values())
-                return {
-                    key: value / total for key, value in feature_importances.items()
+                feature_importances = {
+                    key: value / sum(feature_importances.values())
+                    for key, value in feature_importances.items()
                 }
+        else:
+            j = self.feature_names.index(feature)
 
-        j = self.feature_names.index(feature)
-        feature_importances_from_trees = sum(
-            tree.compute_feature_importances() for tree in self.trees[j]
-        )
-        feature_importances = {
-            feature_name: feature_importances_from_trees[
-                self.feature_selection[j].index(self.feature_names.index(feature_name))
-            ]
-            if feature_name in self.feature_selection[j]
-            else 0
-            for feature_name in self.feature_names
-        }
-        if normalize:
-            total = sum(feature_importances.values())
-            return {key: value / total for key, value in feature_importances.items()}
-
+            feature_importances_from_trees = np.array(
+                [tree.compute_feature_importances() for tree in self.trees[j]]
+            ).sum(axis=0)
+            feature_importances = {}
+            for feature_name in self.feature_names:
+                feature_index = self.feature_names.index(feature_name)
+                if feature_index in self.feature_selection[j]:
+                    feature_importances[feature_name] = feature_importances_from_trees[
+                        self.feature_selection[j].index(feature_index)
+                    ]
+                else:
+                    feature_importances[feature_name] = 0
+            if normalize:
+                feature_importances = {
+                    key: value / sum(feature_importances.values())
+                    for key, value in feature_importances.items()
+                }
         return feature_importances
 
     def reset(self, n_estimators: Optional[Union[int, List[int]]] = None) -> None:
