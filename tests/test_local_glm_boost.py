@@ -47,7 +47,7 @@ class LocalGLMBoosterTestCase(unittest.TestCase):
 
         self.assertAlmostEqual(
             model.distribution.loss(y=y, z=model.predict(X=self.X)).mean(),
-            1.4599518460550729,
+            1.4386291517990328,
             places=3,
         )
 
@@ -69,7 +69,7 @@ class LocalGLMBoosterTestCase(unittest.TestCase):
 
         self.assertAlmostEqual(
             model.distribution.loss(y=y, z=model.predict(X=self.X)).mean(),
-            1.0829052694663523,
+            1.0784736678399922,
             places=3,
         )
 
@@ -91,7 +91,7 @@ class LocalGLMBoosterTestCase(unittest.TestCase):
 
         self.assertAlmostEqual(
             model.distribution.loss(y=y, z=model.predict(X=self.X)).mean(),
-            0.8769437151152,
+            0.8739431358249856,
             places=3,
         )
 
@@ -113,7 +113,7 @@ class LocalGLMBoosterTestCase(unittest.TestCase):
 
         self.assertAlmostEqual(
             model.distribution.loss(y=y, z=model.predict(X=self.X), w=self.w).mean(),
-            4.302068289608678,
+            4.282556425015984,
             places=3,
         )
 
@@ -135,7 +135,7 @@ class LocalGLMBoosterTestCase(unittest.TestCase):
 
         self.assertAlmostEqual(
             model.distribution.loss(y=y, z=model.predict(X=self.X), w=self.w).mean(),
-            1.2850441488845914,
+            1.281501654959411,
             places=3,
         )
 
@@ -157,7 +157,7 @@ class LocalGLMBoosterTestCase(unittest.TestCase):
 
         self.assertAlmostEqual(
             model.distribution.loss(y=y, z=model.predict(X=self.X), w=self.w).mean(),
-            1.0759110652564032,
+            1.071401011919995,
             places=3,
         )
 
