@@ -29,7 +29,7 @@ model = LocalGLMBooster(
     max_depth=2,
 )
 start_time = time.time()
-model.fit(X=X, y=y, w=w, cyclical = False)
+model.fit(X=X, y=y, w=w, cyclical = True)
 stop_time = time.time()
 
 print(f"Model fit time: {stop_time - start_time}")
