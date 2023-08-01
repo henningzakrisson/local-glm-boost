@@ -1,4 +1,4 @@
-from typing import List, Union, Optional, Tuple, Dict
+from typing import TypeVar, List, Union, Optional, Tuple, Dict
 
 import numpy as np
 import pandas as pd
@@ -9,17 +9,25 @@ from .utils.fix_datatype import fix_datatype
 from .boosting_tree import BoostingTree
 
 
+T = TypeVar("T")
+Hyperparameter = Union[T, List[T], Dict[Union[int, str], T]]
+FeatureDict = Union[
+    Dict[Union[int, str], List[Union[int, str]]],
+    Dict[Union[int, str], Dict[Union[int, str], List[Union[int, str]]]],
+]
+
+
 class LocalGLMBooster:
     def __init__(
         self,
         distribution: str = "normal",
-        n_estimators: Union[List[int], int, pd.Series] = 100,
-        learning_rate: Union[List[float], float] = 0.1,
-        min_samples_split: Union[List[int], int] = 2,
-        min_samples_leaf: Union[List[int], int] = 1,
-        max_depth: Union[List[int], int] = 3,
-        glm_init: Union[List[bool], bool] = True,
-        features: Optional[Dict[Union[str, int], List[Union[str, int]]]] = None,
+        n_estimators: Hyperparameter[int] = 100,
+        learning_rate: Hyperparameter[float] = 0.1,
+        min_samples_split: Hyperparameter[int] = 2,
+        min_samples_leaf: Hyperparameter[int] = 1,
+        max_depth: Hyperparameter[int] = 3,
+        glm_init: Hyperparameter[bool] = True,
+        feature_selection: Optional[FeatureDict] = None,
     ):
         """
         Initialize a LocalGLMBooster model.
@@ -31,16 +39,17 @@ class LocalGLMBooster:
         :param min_samples_leaf: Minimum number of samples required at a leaf node. Dimension-wise or global for all coefficients.
         :param max_depth: Maximum depths of each decision tree. Dimension-wise or global for all coefficients.
         :param glm_init: Whether to initialize the model with a GLM fit.
-        :param features: Features to use for each coefficient. A dictionary with the coefficient name or number as key and a list of feature names or numbers as value.
+        :param feature_selection: Features to use for each coefficient. A dictionary with the coefficient name or number as key and a list of feature names or numbers as value.
         """
         self.distribution = initiate_distribution(distribution)
+
         self.n_estimators = n_estimators
         self.learning_rate = learning_rate
         self.min_samples_split = min_samples_split
         self.min_samples_leaf = min_samples_leaf
         self.max_depth = max_depth
         self.glm_init = glm_init
-        self.features = features
+        self.feature_selection = feature_selection
 
         self.p = None
         self.beta0 = None
@@ -61,12 +70,8 @@ class LocalGLMBooster:
         :param y: True response values for the input data of shape (n,).
         :param w: Weights of the observations. If `None`, all weights are set to 1.
         """
-        if w is None:
-            w = np.ones_like(y)
-
-        self._adjust_feature_selection(X=X)
-        X, y, w = fix_datatype(X=X, y=y, w=w)
-
+        self.feature_names = self._get_feature_names(X=X)
+        X, y, w = fix_datatype(X=X, y=y, w=w if w is not None else np.ones_like(y))
         self.p = X.shape[1]
         self._adjust_hyperparameters()
         self.z0, self.beta0 = self._adjust_initializer(X=X, y=y, w=w)
@@ -74,51 +79,81 @@ class LocalGLMBooster:
 
         z = self.z0 + (self.beta0.T @ X.T).T.reshape(-1)
 
-        for k in range(max(self.n_estimators)):
+        for k in range(max(self.n_estimators.values())):
             for j in range(self.p):
                 if k < self.n_estimators[j]:
                     self.trees[j][k].fit_gradients(
-                        X=X, y=y, z=z, w=w, j=j, features=self.features[j]
+                        X=X, y=y, z=z, w=w, j=j, features=self.feature_selection[j]
                     )
                     z += (
                         self.learning_rate[j]
-                        * self.trees[j][k].predict(X[:, self.features[j]])
+                        * self.trees[j][k].predict(X[:, self.feature_selection[j]])
                         * X[:, j]
                     )
 
-        # Re-adjust the initial parameter values
-        self.z0, self.beta0 = self._adjust_initializer(X=X, y=y, w=w)
-
-    def _adjust_feature_selection(self, X: Union[pd.DataFrame, np.ndarray]) -> None:
-        """Adjust keys for the features selection and save feature names.
-
-        :param X: Input data matrix or dataframe of shape (n, p).
+    def _get_feature_names(
+        self, X: Union[np.ndarray, pd.DataFrame]
+    ) -> List[Union[int, str]]:
+        """Get the feature names from the input data.
+        If the input data is a DataFrame, the column names are returned.
+        Otherwise, the features are named 0, 1, ..., p-1.
         """
         if isinstance(X, pd.DataFrame):
-            self.feature_names = X.columns
-            if self.features is not None:
-                self.features = {
-                    X.columns.get_loc(coefficient): [
-                        X.columns.get_loc(feature)
-                        for feature in self.features[coefficient]
-                    ]
-                    for coefficient in self.features.keys()
-                }
-            else:
-                self.features = {
-                    j: list(range(X.shape[1])) for j in range(len(X.columns))
-                }
-            if self.glm_init is not None and not isinstance(self.glm_init, bool):
-                self.glm_init = [
-                    self.glm_init[coefficient] for coefficient in X.columns
-                ]
-            else:
-                self.glm_init = [True for _ in range(X.shape[1])]
+            return list(X.columns)
         else:
-            if self.features is None:
-                self.features = {j: list(range(X.shape[1])) for j in range(X.shape[1])}
-            if self.glm_init is None:
-                self.glm_init = [True for _ in range(X.shape[1])]
+            return list(np.arange(X.shape[1]))
+
+    def _adjust_hyperparameters(self) -> None:
+        """Adjust hyperparameters given the covariate dimensions.
+        Since the accepted format of the hyperparameters are floats, lists, or Series, they are here adjusted
+        to lists of length p. The covariate is adjusted to comply with the data in case of a Series.
+        """
+
+        # TODO: Replace with a type check and check if it is a Hyperparameter?
+        for parameter_name in [
+            "n_estimators",
+            "learning_rate",
+            "min_samples_split",
+            "min_samples_leaf",
+            "max_depth",
+            "glm_init",
+            "feature_selection",
+        ]:
+            parameter_value = getattr(self, parameter_name)
+            if isinstance(parameter_value, Dict):
+                new_hyperparam_dict = {}
+                for j, feature_name in enumerate(self.feature_names):
+                    if feature_name not in parameter_value.keys():
+                        raise ValueError(
+                            f"Hyperparameter {parameter_name} missing for feature {feature_name}"
+                        )
+                    # Adjust feature names for feature selection
+                    if parameter_name == "feature_selection":
+                        new_hyperparam_dict[j] = [
+                            self.feature_names.index(feature)
+                            for feature in parameter_value[feature_name]
+                        ]
+                    else:
+                        new_hyperparam_dict[j] = parameter_value[feature_name]
+                    setattr(self, parameter_name, new_hyperparam_dict)
+            elif isinstance(parameter_value, List):
+                if len(parameter_value) != self.p:
+                    raise ValueError(
+                        f"Hyperparameter {parameter_name} not of length {self.p}"
+                    )
+                setattr(
+                    self, parameter_name, {j: parameter_value[j] for j in range(self.p)}
+                )
+            elif parameter_name == "feature_selection" and parameter_value is None:
+                setattr(
+                    self,
+                    parameter_name,
+                    {j: [k for k in range(self.p)] for j in range(self.p)},
+                )
+            else:
+                setattr(
+                    self, parameter_name, {j: parameter_value for j in range(self.p)}
+                )
 
     def _initiate_trees(self):
         """Initiate the trees."""
@@ -134,35 +169,6 @@ class LocalGLMBooster:
             ]
             for j in range(self.p)
         ]
-
-    def _adjust_hyperparameters(self) -> None:
-        """Adjust hyperparameters given the new covariate dimensions."""
-
-        def adjust_param(parameter_name: str):
-            parameter_value = getattr(self, parameter_name)
-            if isinstance(parameter_value, List) or isinstance(
-                parameter_value, np.ndarray
-            ):
-                if len(parameter_value) != self.p:
-                    raise ValueError(
-                        f"Length of {parameter_name} must be equal to the number of covariates."
-                    )
-            elif isinstance(parameter_value, pd.Series):
-                setattr(
-                    self, parameter_name, parameter_value.loc[self.feature_names].values
-                )
-            else:
-                setattr(self, parameter_name, [parameter_value] * self.p)
-
-        for parameter_name in [
-            "n_estimators",
-            "learning_rate",
-            "min_samples_split",
-            "min_samples_leaf",
-            "max_depth",
-            "glm_init",
-        ]:
-            adjust_param(parameter_name)
 
     def _adjust_initializer(
         self,
@@ -186,16 +192,19 @@ class LocalGLMBooster:
             w = np.ones_like(y)
         if z is None:
             z = np.zeros(X.shape[0])
+        features_to_initiate = [glm_init for glm_init in self.glm_init.values()]
         to_minimize = lambda z0_and_beta: self.distribution.loss(
-            y=y, z=z + z0_and_beta[0] + X[:, self.glm_init] @ z0_and_beta[1:], w=w
+            y=y,
+            z=z + z0_and_beta[0] + X[:, features_to_initiate] @ z0_and_beta[1:],
+            w=w,
         ).sum()
         glm_coefficients = minimize(
             fun=to_minimize,
-            x0=np.zeros(1 + sum(self.glm_init)),
+            x0=np.zeros(1 + sum(features_to_initiate)),
         )["x"]
         z0 = glm_coefficients[0]
         beta0 = np.zeros(X.shape[1])
-        beta0[self.glm_init] = glm_coefficients[1:]
+        beta0[features_to_initiate] = glm_coefficients[1:]
         return z0, beta0
 
     def add_tree(
@@ -229,7 +238,7 @@ class LocalGLMBooster:
             )
         )
         self.trees[j][-1].fit_gradients(
-            X=X, y=y, z=z, w=w, j=j, features=self.features[j]
+            X=X, y=y, z=z, w=w, j=j, features=self.feature_selection[j]
         )
         self.n_estimators[j] += 1
 
@@ -248,7 +257,7 @@ class LocalGLMBooster:
                 sum(
                     [
                         self.learning_rate[j]
-                        * self.trees[j][k].predict(X[:, self.features[j]])
+                        * self.trees[j][k].predict(X[:, self.feature_selection[j]])
                         for k in range(self.n_estimators[j])
                     ]
                 )
@@ -280,7 +289,7 @@ class LocalGLMBooster:
         self, j: Union[str, int] = "all", normalize: bool = True
     ) -> np.ndarray:
         """
-        Computes the feature importance for parameter all features for dimension j
+        Computes the feature importance for parameter all feature_selection for dimension j
         If j is 'all', the feature importance is calculated over all parameter dimensions.
         Note that the feature importance is calculated for regression attentions beta_j(x) meaning that the GLM parameters are not taken into account.
 
@@ -293,17 +302,21 @@ class LocalGLMBooster:
                 feature_importances_from_trees = np.array(
                     [tree.compute_feature_importances() for tree in self.trees[j]]
                 ).sum(axis=0)
-                feature_importances[self.features[j]] += feature_importances_from_trees
+                feature_importances[
+                    self.feature_selection[j]
+                ] += feature_importances_from_trees
         else:
             if isinstance(j, str):
-                j = self.feature_names.get_loc(j)
+                j = self.feature_names.index(j)
 
             feature_importances = np.zeros(self.p)
             feature_importances_from_trees = np.array(
                 [tree.compute_feature_importances() for tree in self.trees[j]]
             ).sum(axis=0)
 
-            feature_importances[self.features[j]] = feature_importances_from_trees
+            feature_importances[
+                self.feature_selection[j]
+            ] = feature_importances_from_trees
         if normalize:
             feature_importances /= feature_importances.sum()
 

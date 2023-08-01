@@ -92,7 +92,7 @@ n_estimators_max = config["n_estimators_max"]
 learning_rate = config["learning_rate"]
 n_splits = config["n_splits"]
 glm_init = config["glm_init"]
-features = config["features"]
+feature_selection = config["feature_selection"]
 
 model = LocalGLMBooster(
     n_estimators=0,
@@ -101,7 +101,7 @@ model = LocalGLMBooster(
     min_samples_leaf=min_samples_leaf,
     distribution=distribution,
     glm_init=glm_init,
-    features=features,
+    feature_selection=feature_selection,
 )
 tuning_results = tune_n_estimators(
     X=X_train,

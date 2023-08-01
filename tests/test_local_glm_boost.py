@@ -179,6 +179,7 @@ class LocalGLMBoosterTestCase(unittest.TestCase):
             n_estimators_max=60,
             rng=self.rng,
             n_splits=2,
+            parallel=True,
         )
         n_estimators = tuning_results["n_estimators"]
         n_estimators_expected = [55, 50]
@@ -208,6 +209,7 @@ class LocalGLMBoosterTestCase(unittest.TestCase):
             n_estimators_max=50,
             rng=self.rng,
             n_splits=2,
+            parallel=True,
         )
         n_estimators = tuning_results["n_estimators"]
         n_estimators_expected = [47, 50]
@@ -296,7 +298,9 @@ class LocalGLMBoosterTestCase(unittest.TestCase):
         Test the feature selection support
         """
         y = self.rng.normal(self.z, 1)
-        model = LocalGLMBooster(distribution="normal", features={0: [0], 1: [0]})
+        model = LocalGLMBooster(
+            distribution="normal", feature_selection={0: [0], 1: [0]}
+        )
         model.fit(X=self.X, y=y)
         feature_importances = {
             j: model.compute_feature_importances(j) for j in range(self.X.shape[1])
@@ -315,7 +319,7 @@ class LocalGLMBoosterTestCase(unittest.TestCase):
         y = pd.Series(self.rng.normal(self.z, 1))
         X = pd.DataFrame(self.X, columns=["a", "b"])
         model = LocalGLMBooster(
-            distribution="normal", features={"a": ["a"], "b": ["a"]}
+            distribution="normal", feature_selection={"a": ["a"], "b": ["a"]}
         )
         model.fit(X=X, y=y)
         feature_importances = {
@@ -327,4 +331,43 @@ class LocalGLMBoosterTestCase(unittest.TestCase):
                 feature_importances[coefficient]["b"],
                 0,
                 msg=f"Feature importance for non-selected feature non-zero",
+            )
+
+    def test_hyperparameter_setting(self):
+        """Test so that the hyperparameters are set in the correct order etc."""
+        y = pd.Series(self.rng.normal(self.z, 1))
+        X = pd.DataFrame(self.X, columns=["a", "b"])
+        n_estimators = [10, 20]
+        min_samples_leaf = 10
+        min_samples_split = {"b": 40, "a": 50}
+        feature_selection = {"a": ["a"], "b": ["b"]}
+        model = LocalGLMBooster(
+            distribution="normal",
+            n_estimators=n_estimators,
+            min_samples_leaf=min_samples_leaf,
+            min_samples_split=min_samples_split,
+            feature_selection=feature_selection,
+        )
+        model.fit(X=X, y=y)
+
+        for j, feature in enumerate(X.columns):
+            self.assertEqual(
+                model.n_estimators[j],
+                n_estimators[j],
+                msg=f"n_estimators not set correctly for feature {feature}",
+            )
+            self.assertEqual(
+                model.min_samples_leaf[j],
+                min_samples_leaf,
+                msg=f"min_samples_leaf not set correctly for feature {feature}",
+            )
+            self.assertEqual(
+                model.min_samples_split[j],
+                min_samples_split[feature],
+                msg=f"min_samples_split not set correctly for feature {feature}",
+            )
+            self.assertEqual(
+                model.feature_selection[j][0],
+                j,
+                msg=f"feature_selection not set correctly for feature {feature}",
             )
