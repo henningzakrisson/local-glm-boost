@@ -200,11 +200,9 @@ class LocalGLMBooster:
         :param z: The current predictions of the model. If None, the predictions are computed from the current model.
         :param w: The weights of the observations. If None, all weights are set to 1.
         """
-        if w is None:
-            w = np.ones(X.shape[0])
-        X, y, w = fix_datatype(X=X, y=y, w=w)
-        if z is None:
-            z = self.predict(X=X)
+        X, y, w = fix_datatype(X=X, y=y, w=w if w is not None else np.ones(X.shape[0]))
+        z = self.predict_parameter(X=X) if z is None else z
+
         if self.n_estimators[j] == max(self.n_estimators.values()):
             self.trees.append(
                 [

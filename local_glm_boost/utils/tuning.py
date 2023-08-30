@@ -49,8 +49,7 @@ def tune_n_estimators(
         else [n_estimators_max] * X.shape[1]
     )
 
-    if w is None:
-        w = np.ones_like(y)
+    w = np.ones_like(y) if w is None else w
     if isinstance(X, pd.DataFrame):
         feature_names = X.columns
     X, y, w = fix_datatype(X=X, y=y, w=w)
