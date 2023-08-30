@@ -36,6 +36,18 @@ class BoostingTree(DecisionTreeRegressor):
             min_samples_leaf=min_samples_leaf,
         )
         self.distribution = distribution
+        self.tree_ = None
+
+    def predict(self, X: np.ndarray) -> np.ndarray:
+        """
+        Returns the predicted values of the tree.
+        :param X: The input samples.
+        :return: The predicted values of the tree.
+        """
+        if self.tree_ is None:
+            return np.zeros(X.shape[0])
+        else:
+            return super().predict(X)
 
     def fit_gradients(
         self,
@@ -128,4 +140,7 @@ class BoostingTree(DecisionTreeRegressor):
 
         :return: The feature importances of the tree.
         """
-        return self.tree_.compute_feature_importances(normalize=False)
+        if self.tree_ is None:
+            return np.zeros(0)
+        else:
+            return self.tree_.compute_feature_importances(normalize=False)
