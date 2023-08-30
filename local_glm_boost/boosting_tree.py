@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List
 
 import numpy as np
 from sklearn.tree import DecisionTreeRegressor
@@ -54,9 +54,9 @@ class BoostingTree(DecisionTreeRegressor):
         X: np.ndarray,
         y: np.ndarray,
         z: np.ndarray,
+        w: np.ndarray,
         j: int,
         features: List[int],
-        w: Optional[np.ndarray] = None,
     ) -> None:
         """
         Fits the BoostingTree to the negative gradients and adjusts node values to minimize loss.
@@ -64,12 +64,10 @@ class BoostingTree(DecisionTreeRegressor):
         :param X: The training input samples.
         :param y: The target values.
         :param z: The predicted parameter values from the previous iteration.
-        :param j: The index of the current iteration.
-        :param features: The indices of the features to use for the tree.
         :param w: The weights of the observations. If `None`, all weights are set to 1.
+        :param j: The index of the feature to use for the tree.
+        :param features: The indices of the features to use for the tree.
         """
-        if w is None:
-            w = np.ones_like(y)
         g = X[:, j] * self.distribution.grad(y=y, z=z, w=w)
         self.fit(X[:, features], -g)
         self._adjust_node_values(X=X, y=y, z=z, w=w, j=j, features=features)
