@@ -30,7 +30,6 @@ class LocalGLMBooster:
         max_depth: Hyperparameter[int] = 3,
         glm_init: Hyperparameter[bool] = True,
         feature_selection: Optional[FeatureSelection] = None,
-        parallel_features: Optional[List[List[int]]] = None,
     ):
         """
         Initialize a LocalGLMBooster model.
@@ -53,12 +52,6 @@ class LocalGLMBooster:
         self.max_depth = max_depth
         self.glm_init = glm_init
         self.feature_selection = feature_selection
-        self.parallel_features = parallel_features if parallel_features else []
-        self.features_that_will_be_parallelized = [
-            feature
-            for feature_list in self.parallel_features
-            for feature in feature_list
-        ]
 
         self.p = None
         self.beta0 = None
@@ -71,6 +64,7 @@ class LocalGLMBooster:
         X: np.ndarray,
         y: np.ndarray,
         w: Optional[np.ndarray] = None,
+        parallel_fit: Optional[List[List[int]]] = None,
     ):
         """
         Fit the model to the data.
@@ -78,6 +72,7 @@ class LocalGLMBooster:
         :param X: Input data matrix of shape (n, p).
         :param y: True response values for the input data of shape (n,).
         :param w: Weights of the observations. If `None`, all weights are set to 1.
+        :param parallel_fit: Indices of coefficients to fit in parallel. If `None`, no coefficients are fit in parallel.
         """
         self._initialize_feature_metadata(X=X)
         self._initialize_hyperparameters()
@@ -87,6 +82,11 @@ class LocalGLMBooster:
 
         self.z0, self.beta0 = self._adjust_glm_model(X=X, y=y, z=0, w=w)
         z = self.z0 + (self.beta0.T @ X.T).T.reshape(-1)
+
+        parallel_fit = parallel_fit if parallel_fit else []
+        features_that_will_be_parallelized = [
+            feature for feature_list in parallel_fit for feature in feature_list
+        ]
 
         def fit_tree(
             tree,
@@ -106,7 +106,7 @@ class LocalGLMBooster:
         for k in range(max(self.n_estimators.values())):
             # First cyclical features
             for j in range(self.p):
-                if j not in self.features_that_will_be_parallelized:
+                if j not in features_that_will_be_parallelized:
                     self.trees[k][j] = fit_tree(
                         tree=self.trees[k][j],
                         j=j,
@@ -124,7 +124,7 @@ class LocalGLMBooster:
                         * X[:, j]
                     )
             # Then parallel features
-            for feature_list in self.parallel_features:
+            for feature_list in parallel_fit:
                 new_trees = Parallel(n_jobs=-1)(
                     delayed(fit_tree)(
                         tree=self.trees[k][j],
