@@ -401,9 +401,8 @@ class LocalGLMBoosterTestCase(unittest.TestCase):
             learning_rate=0.1,
             min_samples_leaf=20,
             max_depth=2,
-            parallel_features=[[2, 3, 4]],
         )
-        model_parallel.fit(X=self.X, y=y)
+        model_parallel.fit(X=self.X, y=y, parallel_fit=[[2, 3, 4]])
 
         model = LocalGLMBooster(
             distribution="normal",
