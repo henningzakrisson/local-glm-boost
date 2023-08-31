@@ -168,12 +168,12 @@ def _evaluate_fold(
 
                 z_train += (
                     model.learning_rate[j]
-                    * model.trees[-1][j].predict(X_train)
+                    * model.trees[j][-1].predict(X_train)
                     * X_train[:, j]
                 )
                 z_valid += (
                     model.learning_rate[j]
-                    * model.trees[-1][j].predict(X_valid)
+                    * model.trees[j][-1].predict(X_valid)
                     * X_valid[:, j]
                 )
 
