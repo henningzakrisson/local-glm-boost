@@ -73,6 +73,7 @@ class LocalGLMBooster:
         :param y: True response values for the input data of shape (n,).
         :param w: Weights of the observations. If `None`, all weights are set to 1.
         :param parallel_fit: Indices of coefficients to fit in parallel. If `None`, no coefficients are fit in parallel.
+        Currently only supports integer indices for parallel fit coefficients.
         """
         self._initialize_feature_metadata(X=X)
         self._initialize_hyperparameters()
