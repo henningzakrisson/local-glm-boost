@@ -371,3 +371,42 @@ class LocalGLMBoosterTestCase(unittest.TestCase):
                 j,
                 msg=f"feature_selection not set correctly for feature {feature}",
             )
+
+    def test_parallel_training(
+        self,
+    ):
+        """
+        Test the loss results on a normal distribution
+        """
+        n = 1000
+        p = 5
+        X_cont = self.rng.normal(0, 1, size=(n, p - 3))
+        X_cat = self.rng.choice(["a", "b", "c"], size=n)
+        self.X = np.concatenate([X_cont, pd.get_dummies(X_cat)], axis=1)
+
+        self.z0 = 0
+        betas = [[]] * p
+        betas[0] = -1 * self.X[:, 0]
+        betas[1] = 2 * self.X[:, 1]
+        betas[2] = 1 * self.X[:, 0]
+        betas[3] = 3 * np.zeros(n)
+        betas[4] = 0.1 * self.X[:, 0] * self.X[:, 1]
+        self.beta = np.stack(betas, axis=1).T
+        self.z = self.z0 + np.sum(self.beta.T * self.X, axis=1)
+
+        y = self.rng.normal(self.z, 1)
+        model = LocalGLMBooster(
+            distribution="normal",
+            n_estimators=50,
+            learning_rate=0.1,
+            min_samples_leaf=20,
+            max_depth=2,
+            parallel_features=[[2, 3, 4]],
+        )
+        model.fit(X=self.X, y=y)
+
+        self.assertAlmostEqual(
+            model.distribution.loss(y=y, z=model.predict(X=self.X)).mean(),
+            1.0571641078646488,
+            places=3,
+        )

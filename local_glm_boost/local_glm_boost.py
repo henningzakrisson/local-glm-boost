@@ -1,4 +1,5 @@
 from typing import TypeVar, List, Union, Optional, Tuple, Dict
+from joblib import Parallel, delayed
 
 import numpy as np
 import pandas as pd
@@ -29,6 +30,7 @@ class LocalGLMBooster:
         max_depth: Hyperparameter[int] = 3,
         glm_init: Hyperparameter[bool] = True,
         feature_selection: Optional[FeatureSelection] = None,
+        parallel_features: Optional[List[List[int]]] = None,
     ):
         """
         Initialize a LocalGLMBooster model.
@@ -51,6 +53,12 @@ class LocalGLMBooster:
         self.max_depth = max_depth
         self.glm_init = glm_init
         self.feature_selection = feature_selection
+        self.parallel_features = parallel_features if parallel_features else []
+        self.features_that_will_be_parallelized = [
+            feature
+            for feature_list in self.parallel_features
+            for feature in feature_list
+        ]
 
         self.p = None
         self.beta0 = None
@@ -80,17 +88,67 @@ class LocalGLMBooster:
         self.z0, self.beta0 = self._adjust_glm_model(X=X, y=y, z=0, w=w)
         z = self.z0 + (self.beta0.T @ X.T).T.reshape(-1)
 
+        def fit_tree(
+            tree,
+            j,
+            X,
+            y,
+            z,
+            w,
+            k,
+            n_estimators,
+            features,
+        ) -> Tuple[BoostingTree, np.ndarray]:
+            if k < n_estimators:
+                tree.fit_gradients(X=X, y=y, z=z, w=w, j=j, features=features)
+            return tree
+
         for k in range(max(self.n_estimators.values())):
+            # First cyclical features
             for j in range(self.p):
+                if j in self.features_that_will_be_parallelized:
+                    pass
                 if k < self.n_estimators[j]:
-                    self.trees[k][j].fit_gradients(
-                        X=X, y=y, z=z, w=w, j=j, features=self.feature_selection[j]
+                    self.trees[k][j] = fit_tree(
+                        tree=self.trees[k][j],
+                        j=j,
+                        X=X,
+                        y=y,
+                        z=z,
+                        w=w,
+                        k=k,
+                        n_estimators=self.n_estimators[j],
+                        features=self.feature_selection[j],
                     )
                     z += (
                         self.learning_rate[j]
                         * self.trees[k][j].predict(X[:, self.feature_selection[j]])
                         * X[:, j]
                     )
+            # Then parallel features
+            for feature_list in self.parallel_features:
+                new_trees = Parallel(n_jobs=-1)(
+                    delayed(fit_tree)(
+                        tree=self.trees[k][j],
+                        j=j,
+                        X=X,
+                        y=y,
+                        z=z,
+                        w=w,
+                        k=k,
+                        n_estimators=self.n_estimators[j],
+                        features=self.feature_selection[j],
+                    )
+                    for j in feature_list
+                )
+                for tree_number, j in enumerate(feature_list):
+                    self.trees[k][j] = new_trees[tree_number]
+                    z += (
+                        self.learning_rate[j]
+                        * self.trees[k][j].predict(X[:, self.feature_selection[j]])
+                        * X[:, j]
+                    )
+
         # Re-fit the initiating model given the tree predictions
         self.z0, self.beta0 = self._adjust_glm_model(
             X=X, y=y, z=z - self.z0 - (self.beta0.T @ X.T).T.reshape(-1), w=w
@@ -144,10 +202,8 @@ class LocalGLMBooster:
                     min_samples_split=self.min_samples_split[j],
                     min_samples_leaf=self.min_samples_leaf[j],
                 )
-                for _ in range(self.n_estimators[j])
                 for j in range(self.p)
             ]
-            for j in range(self.p)
             for _ in range(max(self.n_estimators.values()))
         ]
 
