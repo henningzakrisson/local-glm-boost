@@ -106,9 +106,7 @@ class LocalGLMBooster:
         for k in range(max(self.n_estimators.values())):
             # First cyclical features
             for j in range(self.p):
-                if j in self.features_that_will_be_parallelized:
-                    pass
-                if k < self.n_estimators[j]:
+                if j not in self.features_that_will_be_parallelized:
                     self.trees[k][j] = fit_tree(
                         tree=self.trees[k][j],
                         j=j,
@@ -143,6 +141,7 @@ class LocalGLMBooster:
                 )
                 for tree_number, j in enumerate(feature_list):
                     self.trees[k][j] = new_trees[tree_number]
+                for j in feature_list:
                     z += (
                         self.learning_rate[j]
                         * self.trees[k][j].predict(X[:, self.feature_selection[j]])

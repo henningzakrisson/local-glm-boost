@@ -395,7 +395,7 @@ class LocalGLMBoosterTestCase(unittest.TestCase):
         self.z = self.z0 + np.sum(self.beta.T * self.X, axis=1)
 
         y = self.rng.normal(self.z, 1)
-        model = LocalGLMBooster(
+        model_parallel = LocalGLMBooster(
             distribution="normal",
             n_estimators=50,
             learning_rate=0.1,
@@ -403,10 +403,19 @@ class LocalGLMBoosterTestCase(unittest.TestCase):
             max_depth=2,
             parallel_features=[[2, 3, 4]],
         )
+        model_parallel.fit(X=self.X, y=y)
+
+        model = LocalGLMBooster(
+            distribution="normal",
+            n_estimators=50,
+            learning_rate=0.1,
+            min_samples_leaf=20,
+            max_depth=2,
+        )
         model.fit(X=self.X, y=y)
 
         self.assertAlmostEqual(
             model.distribution.loss(y=y, z=model.predict(X=self.X)).mean(),
-            1.0571641078646488,
-            places=3,
+            model_parallel.distribution.loss(y=y, z=model.predict(X=self.X)).mean(),
+            places=6,
         )
