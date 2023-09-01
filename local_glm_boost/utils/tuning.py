@@ -57,6 +57,9 @@ def tune_n_estimators(
         X=X, y=y, w=w, n_splits=n_splits, rng=rng, stratified=stratified
     )
 
+    # Update order can differ when parallelizing
+    update_order = [j for j in range(X.shape[1])]
+
     logger.log(f"performing cross-validation on {n_splits} folds")
     if parallel:
         results = Parallel(n_jobs=n_jobs)(
@@ -87,6 +90,7 @@ def tune_n_estimators(
     n_estimators = _find_n_estimators(
         loss=np.sum(loss["valid"], axis=0),
         n_estimators_max=n_estimators_max,
+        update_order=update_order,
         logger=logger,
     )
 
@@ -161,6 +165,9 @@ def _evaluate_fold(
     loss_train[0, :] = model.distribution.loss(y=y_train, z=z_train, w=w_train).sum()
     loss_valid[0, :] = model.distribution.loss(y=y_valid, z=z_valid, w=w_valid).sum()
 
+    # Update order can differ when parallelizing
+    update_order = [j for j in range(model.p)]
+
     for k in range(1, max(n_estimators_max) + 1):
         for j in range(model.p):
             if k < n_estimators_max[j]:
@@ -194,7 +201,9 @@ def _evaluate_fold(
                 )
 
         if _has_tuning_converged(
-            current_loss=loss_valid[k], previous_loss=loss_valid[k - 1]
+            current_loss=loss_valid[k],
+            previous_loss=loss_valid[k - 1],
+            update_order=update_order,
         ):
             loss_train[k + 1 :, :] = loss_train[k, -1]
             loss_valid[k + 1 :, :] = loss_valid[k, -1]
@@ -206,6 +215,7 @@ def _evaluate_fold(
 def _has_tuning_converged(
     current_loss: np.ndarray,
     previous_loss: np.ndarray,
+    update_order: List[int],
 ) -> bool:
     """Check if the tuning has converged after a complete boosting iteration.
 
@@ -213,26 +223,43 @@ def _has_tuning_converged(
     :param previous_loss: The previous loss for all parameter dimensions.
     :return: True if the tuning has converged, False otherwise.
     """
-    shifted_current_loss = np.roll(current_loss, shift=1)
-    shifted_current_loss[0] = previous_loss[-1]
-    return np.all(current_loss >= shifted_current_loss)
+    loss_delta = np.zeros_like(current_loss)
+    for update_number, feature in enumerate(update_order):
+        if update_number == 0:
+            loss_delta[feature] = (
+                current_loss[feature] - previous_loss[update_order[-1]]
+            )
+        else:
+            loss_delta[feature] = (
+                current_loss[feature] - current_loss[update_order[update_number - 1]]
+            )
+
+    return np.all(loss_delta >= 0)
 
 
 def _find_n_estimators(
     loss: np.ndarray,
     n_estimators_max: Union[int, List[int]],
+    update_order: List[int],
     logger: LocalGLMBoostLogger,
 ) -> List[int]:
     """Find the number of estimators for each parameter dimension.
 
     :param loss: The loss for each parameter dimension and number of estimators.
     :param n_estimators_max: The maximum number of estimators for each parameter dimension.
+    :param update_order: The order in which the parameters were updated.
     :param logger: The logger.
     :return: The number of estimators for each parameter dimension.
     """
     loss_delta = np.zeros_like(loss)
-    loss_delta[1:, 0] = loss[1:, 0] - loss[:-1, -1]
-    loss_delta[1:, 1:] = loss[1:, 1:] - loss[1:, :-1]
+    for update_number, feature in enumerate(update_order):
+        if update_number == 0:
+            loss_delta[1:, feature] = loss[1:, feature] - loss[:-1, update_order[-1]]
+        else:
+            loss_delta[:, feature] = (
+                loss[:, feature] - loss[:, update_order[update_number - 1]]
+            )
+
     n_estimators = np.maximum(0, np.argmax(loss_delta > 0, axis=0) - 1)
     did_not_converge = (loss_delta > 0).sum(axis=0) == 0
     n_estimators[did_not_converge] = np.array(n_estimators_max)[did_not_converge]
