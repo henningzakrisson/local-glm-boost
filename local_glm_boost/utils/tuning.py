@@ -24,7 +24,7 @@ def tune_n_estimators(
     n_jobs: int = -1,
     stratified: bool = False,
 ) -> Dict[str, Union[List[int], Dict[str, np.ndarray]]]:
-    """Tunes the kappa parameter of a CycGBM model using k-fold cross-validation.
+    """Tunes the n_estimators parameter of a LocalGBMBoost model using k-fold cross-validation.
 
     :param X: The input data matrix of shape (n_samples, n_features).
     :param y: The target values of shape (n_samples,).
@@ -164,7 +164,9 @@ def _evaluate_fold(
     for k in range(1, max(n_estimators_max) + 1):
         for j in range(model.p):
             if k < n_estimators_max[j]:
-                model.add_tree(X=X_train, y=y_train, j=j, z=z_train, w=w_train)
+                tree = model.fit_tree(X=X_train, y=y_train, z=z_train, w=w_train, j=j)
+                model.trees[j].append(tree)
+                model.n_estimators[j] += 1
 
                 z_train += (
                     model.learning_rate[j]

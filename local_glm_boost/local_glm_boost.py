@@ -226,38 +226,6 @@ class LocalGLMBooster:
         beta0[features_to_initiate] = glm_coefficients[1:]
         return z0, beta0
 
-    def add_tree(
-        self,
-        X: np.ndarray,
-        y: np.ndarray,
-        j: int,
-        z: Optional[np.ndarray] = None,
-        w: Optional[np.ndarray] = None,
-    ) -> None:
-        """
-        Updates the current boosting model with one additional tree to the jth coefficient.
-        :param X: The training input data, shape (n_samples, n_features).
-        :param y: The target values for the training data.
-        :param j: Coefficient  to update
-        :param z: The current predictions of the model. If None, the predictions are computed from the current model.
-        :param w: The weights of the observations. If None, all weights are set to 1.
-        """
-        X, y, w = fix_datatype(X=X, y=y, w=w if w is not None else np.ones(X.shape[0]))
-        z = self.predict_parameter(X=X) if z is None else z
-
-        self.trees[j].append(
-            BoostingTree(
-                distribution=self.distribution,
-                max_depth=self.max_depth[j],
-                min_samples_split=self.min_samples_split[j],
-                min_samples_leaf=self.min_samples_leaf[j],
-            )
-        )
-        self.n_estimators[j] += 1
-        self.trees[j][-1].fit_gradients(
-            X=X, y=y, z=z, w=w, j=j, features=self.feature_selection[j]
-        )
-
     def predict_parameter(
         self,
         X: np.ndarray,
