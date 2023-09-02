@@ -6,7 +6,7 @@ import pandas as pd
 from sklearn.model_selection import KFold, StratifiedKFold
 
 from local_glm_boost.local_glm_boost import LocalGLMBooster
-from local_glm_boost.utils.fix_datatype import fix_datatype
+from local_glm_boost.utils.fix_data import fix_data
 from .logger import LocalGLMBoostLogger
 
 
@@ -23,6 +23,8 @@ def tune_n_estimators(
     parallel: bool = True,
     n_jobs: int = -1,
     stratified: bool = False,
+    parallel_fit: Optional[List[List[int]]] = None,
+    parallel_fit_n_jobs: int = -1,
 ) -> Dict[str, Union[List[int], Dict[str, np.ndarray]]]:
     """Tunes the n_estimators parameter of a LocalGBMBoost model using k-fold cross-validation.
 
@@ -38,10 +40,14 @@ def tune_n_estimators(
     :param parallel: Whether to use parallel processing for the cross-validation.
     :param n_jobs: The number of jobs to use for parallel processing. Default is -1, which uses all available cores.
     :param stratified: Whether to use stratified k-fold cross-validation.
+    :param parallel_fit: Lists of features to fit in parallel. If None, no features are fit in parallel.
+    :param parallel_fit_n_jobs: The number of jobs to use for parallel processing of the parallel_fit features.
     """
     logger = LocalGLMBoostLogger(verbose=-1) if logger is None else logger
     rng = np.random.default_rng(random_state) if rng is None else rng
     model.reset(n_estimators=0)
+
+    parallel_fit = [] if parallel_fit is None else parallel_fit
 
     n_estimators_max = (
         n_estimators_max
@@ -52,7 +58,7 @@ def tune_n_estimators(
     w = np.ones_like(y) if w is None else w
     if isinstance(X, pd.DataFrame):
         feature_names = X.columns
-    X, y, w = fix_datatype(X=X, y=y, w=w)
+    X, y, w = fix_data(X=X, y=y, w=w, parallel_fit=parallel_fit)
     folds = _fold_split(
         X=X, y=y, w=w, n_splits=n_splits, rng=rng, stratified=stratified
     )
@@ -64,6 +70,7 @@ def tune_n_estimators(
                 fold=folds[i],
                 model=model,
                 n_estimators_max=n_estimators_max,
+                parallel_fit=parallel_fit,
             )
             for i in folds
         )
@@ -76,6 +83,7 @@ def tune_n_estimators(
                     fold=folds[i],
                     model=model,
                     n_estimators_max=n_estimators_max,
+                    parallel_fit=parallel_fit,
                 )
             )
 
@@ -149,6 +157,7 @@ def _evaluate_fold(
     fold: Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray],
     model: LocalGLMBooster,
     n_estimators_max: List[int],
+    parallel_fit: List[List[int]],
 ):
     X_train, y_train, w_train, X_valid, y_valid, w_valid = fold
 
@@ -161,8 +170,11 @@ def _evaluate_fold(
     loss_train[0, :] = model.distribution.loss(y=y_train, z=z_train, w=w_train).sum()
     loss_valid[0, :] = model.distribution.loss(y=y_valid, z=z_valid, w=w_valid).sum()
 
+    parallel_features = [j for feature_list in parallel_fit for j in feature_list]
+    cyclical_features = [j for j in range(model.p) if j not in parallel_features]
+
     for k in range(1, max(n_estimators_max) + 1):
-        for j in range(model.p):
+        for j in cyclical_features:
             if k < n_estimators_max[j]:
                 tree = model.fit_tree(X=X_train, y=y_train, z=z_train, w=w_train, j=j)
                 model.trees[j].append(tree)
@@ -186,6 +198,47 @@ def _evaluate_fold(
                     y=y_valid, z=z_valid, w=w_valid
                 ).sum()
             else:
+                loss_train[k, j] = (
+                    loss_train[k - 1, -1] if j == 0 else loss_train[k, j - 1]
+                )
+                loss_valid[k, j] = (
+                    loss_valid[k - 1, -1] if j == 0 else loss_valid[k, j - 1]
+                )
+
+        for js in parallel_fit:
+            trees = Parallel(n_jobs=-1)(
+                delayed(model.fit_tree)(
+                    X=X_train,
+                    y=y_train,
+                    z=z_train,
+                    w=w_train,
+                    j=j,
+                )
+                for j in js
+                if k < n_estimators_max[j]
+            )
+            for tree_index, j in enumerate([j for j in js if k < n_estimators_max[j]]):
+                model.trees[j].append(trees[tree_index])
+                model.n_estimators[j] += 1
+
+                z_train += (
+                    model.learning_rate[j]
+                    * model.trees[j][-1].predict(X_train)
+                    * X_train[:, j]
+                )
+                z_valid += (
+                    model.learning_rate[j]
+                    * model.trees[j][-1].predict(X_valid)
+                    * X_valid[:, j]
+                )
+
+                loss_train[k, j] = model.distribution.loss(
+                    y=y_train, z=z_train, w=w_train
+                ).sum()
+                loss_valid[k, j] = model.distribution.loss(
+                    y=y_valid, z=z_valid, w=w_valid
+                ).sum()
+            for j in [j for j in js if k >= n_estimators_max[j]]:
                 loss_train[k, j] = (
                     loss_train[k - 1, -1] if j == 0 else loss_train[k, j - 1]
                 )

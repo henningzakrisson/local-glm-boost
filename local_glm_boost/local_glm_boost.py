@@ -6,7 +6,7 @@ import pandas as pd
 from scipy.optimize import minimize
 
 from .utils.distributions import initiate_distribution
-from .utils.fix_datatype import fix_datatype
+from .utils.fix_data import fix_data
 from .utils.hyperparameters import HyperparameterDict, FeatureSelectionDict
 from .boosting_tree import BoostingTree
 
@@ -107,7 +107,7 @@ class LocalGLMBooster:
         self.trees = [[] for j in range(self.p)]
         parallel_fit = [] if parallel_fit is None else parallel_fit
 
-        X, y, w = fix_datatype(X=X, y=y, w=w if w is not None else np.ones_like(y))
+        X, y, w = fix_data(X=X, y=y, w=w if w is not None else np.ones_like(y))
 
         self.z0, self.beta0 = self._adjust_glm_model(X=X, y=y, z=0, w=w)
         z = self.z0 + (self.beta0.T @ X.T).T.reshape(-1)
@@ -261,7 +261,7 @@ class LocalGLMBooster:
         :param X: Input data matrix of shape (n, p).
         :return: Predicted response values for the input data of shape (n,).
         """
-        X_fixed = fix_datatype(X=X, feature_names=self.feature_names)
+        X_fixed = fix_data(X=X, feature_names=self.feature_names)
         beta = self.predict_parameter(X=X_fixed)
         z_hat = self.z0 + np.sum(beta.T * X_fixed, axis=1)
         if isinstance(X, pd.DataFrame):
