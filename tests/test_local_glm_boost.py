@@ -418,3 +418,66 @@ class LocalGLMBoosterTestCase(unittest.TestCase):
             model_parallel.distribution.loss(y=y, z=model.predict(X=self.X)).mean(),
             places=6,
         )
+
+    def test_parallel_tuning(
+        self,
+    ):
+        """
+        Test the tuning results when fitting in parallel
+        """
+        n = 1000
+        p = 5
+        X_cont = self.rng.normal(0, 1, size=(n, p - 3))
+        X_cat = self.rng.choice(["a", "b", "c"], size=n)
+        self.X = np.concatenate([X_cont, pd.get_dummies(X_cat)], axis=1)
+
+        self.z0 = 0
+        betas = [[]] * p
+        betas[0] = -1 * self.X[:, 0]
+        betas[1] = 2 * self.X[:, 1]
+        betas[2] = 1 * self.X[:, 0]
+        betas[3] = 3 * np.zeros(n)
+        betas[4] = 0.1 * self.X[:, 0] * self.X[:, 1]
+        self.beta = np.stack(betas, axis=1).T
+        self.z = self.z0 + np.sum(self.beta.T * self.X, axis=1)
+
+        y = self.rng.normal(self.z, 1)
+        model = LocalGLMBooster(
+            distribution="normal",
+            n_estimators=50,
+            learning_rate=0.1,
+            min_samples_leaf=20,
+            max_depth=2,
+        )
+
+        tuning_rng = np.random.default_rng(123)
+        tuning_results = tune_n_estimators(
+            X=self.X,
+            y=y,
+            model=model,
+            n_estimators_max=60,
+            rng=tuning_rng,
+            n_splits=2,
+            parallel=True,
+        )
+        n_estimators = tuning_results["n_estimators"]
+
+        tuning_rng = np.random.default_rng(123)
+        tuning_results_parallel = tune_n_estimators(
+            X=self.X,
+            y=y,
+            model=model,
+            n_estimators_max=60,
+            rng=tuning_rng,
+            n_splits=2,
+            parallel=True,
+            parallel_fit=[[2, 3, 4]],
+        )
+        n_estimators_parallel = tuning_results_parallel["n_estimators"]
+
+        for j in range(p):
+            self.assertEqual(
+                n_estimators[j],
+                n_estimators_parallel[j],
+                msg=f"n_estimators not set correctly for feature {j}",
+            )
