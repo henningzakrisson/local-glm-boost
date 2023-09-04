@@ -1,2 +1,0 @@
-[2023-07-30 13:40][run_8][Loading configuration]
-[2023-07-30 13:40][run_8][Loading data]
