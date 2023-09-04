@@ -1,8 +1,0 @@
-[2023-07-28 14:10][run_1][Loading configuration]
-[2023-07-28 14:10][run_1][Loading data]
-[2023-07-28 14:10][run_1][Tuning model]
-[2023-07-28 14:10][run_1][performing cross-validation on 5 folds]
-[2023-07-28 15:40][run_1][tuning did not converge for dimensions (array([0, 1, 2, 3]),)]
-[2023-07-28 15:40][run_1][Fitting models]
-[2023-07-28 17:01][run_1][Summarizing results]
-[2023-07-28 17:05][run_1][Done!]
