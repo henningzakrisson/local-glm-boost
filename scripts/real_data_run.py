@@ -68,39 +68,38 @@ n_jobs = config["n_jobs"]
 # Load and preprocess data
 logger.log("Loading data")
 ssl._create_default_https_context = ssl._create_unverified_context
-df = fetch_openml(data_id=41214, as_frame=True).data
+df_num = fetch_openml(data_id=41214, as_frame=True).data
+df_sev = fetch_openml(data_id=41215, as_frame=True).data
+df_sev_tot = df_sev.groupby('IDpol')['ClaimAmount'].sum()
+df = df_num.merge(df_sev_tot, left_on='IDpol', right_index=True, how='left')
+df.loc[df['ClaimAmount'].isna(), 'ClaimNb'] = 0
+df.loc[df['ClaimAmount'].isna(), 'ClaimAmount'] = 0
+df = df.loc[df['ClaimNb'] <=5]
 
-# df = df.loc[df["IDpol"] >= 24500]
-df = df.loc[df["ClaimNb"] <= 5]
-# df = df.loc[df["Exposure"] < 1]
-df["Diesel"] = (df["VehGas"] == "Diesel").astype(float)
-df["Area"].replace(
-    {
-        "A": 1,
-        "B": 2,
-        "C": 3,
-        "D": 4,
-        "E": 5,
-        "F": 6,
-    },
-    inplace=True,
-)
-for categorical_feature in ["VehBrand", "Region"]:
-    if categorical_feature in features_to_use:
-        dummies = pd.get_dummies(df[categorical_feature], prefix=categorical_feature)
+df['Exposure'] = df['Exposure'].clip(0, 1)
+df['Area'] = df['Area'].apply(lambda x: ord(x) - 65)
+df['VehGas'] = df['VehGas'].apply(lambda x: 1 if x == 'Regular' else 0)
+
+continous_features = ['VehPower','VehAge','DrivAge','BonusMalus','Density','Area','VehGas']
+features = [feature for feature in continous_features if feature in features_to_use]
+parallel_fit = []
+for feature in ['VehBrand','Region']:
+    if feature in features_to_use:
+        dummies = pd.get_dummies(df[feature], prefix=feature)
         df = pd.concat([df, dummies], axis=1)
-        features_to_use.remove(categorical_feature)
-        features_to_use += list(dummies.columns)
+        dummy_feature_indices = [j for j in range(len(features),len(features)+len(dummies.columns))]
+        parallel_fit.append(dummy_feature_indices)
+        features += dummies.columns.tolist()
 
 if n != "all":
     df = df.sample(n)
 n = len(df)
 
-X = df[features_to_use].astype(float)
+X = df[features].astype(float)
 y = df[target]
 w = df[weights]
 
-X = X / X.var(axis=0)
+X = X / X.max(axis=0)
 
 # Tune n_estimators
 logger.log("Tuning model")
@@ -131,6 +130,7 @@ tuning_results = tune_n_estimators(
     n_jobs=n_jobs,
     stratified=stratified,
     logger=logger,
+    parallel_fit=parallel_fit,
 )
 n_estimators = tuning_results["n_estimators"]
 loss = tuning_results["loss"]
@@ -146,37 +146,6 @@ model = LocalGLMBooster(
     max_depth=max_depth,
 )
 model.fit(X_train, y_train, w_train)
-
-# Light model
-feature_importances = {
-    coefficient: model.compute_feature_importances(j=coefficient)
-    for coefficient in features_to_use
-    if n_estimators[coefficient] > 0
-}
-features_light = {
-    coefficient: [
-        feature
-        for feature in features_to_use
-        if feature_importances[coefficient][feature] > 0.05
-    ]
-    for coefficient in feature_importances.keys()
-}
-
-glm_init_light = {
-    coefficient: np.abs(model.beta0[i]) > 0.05
-    for i, coefficient in enumerate(features_to_use)
-}
-
-model_light = LocalGLMBooster(
-    distribution="poisson",
-    n_estimators=n_estimators,
-    learning_rate=learning_rate,
-    min_samples_leaf=min_samples_leaf,
-    max_depth=max_depth,
-    features=features_light,
-    glm_init=glm_init_light,
-)
-model_light.fit(X=X_train, y=y_train, w=w_train)
 
 # Intercept model
 to_minimize = lambda z: model.distribution.loss(y=y_train, z=z, w=w_train).mean()
@@ -199,71 +168,59 @@ def deviance(y, z, w):
     return 2 * (y_log_y - y * (np.log(w) + z + 1) + w * np.exp(z))
 
 
-# Poisson deviance
-df_loss = pd.DataFrame(
-    index=["intercept", "glm", "local-glm-boost", "local-glm-boost-light"],
+df_deviance = pd.DataFrame(
+    index=["intercept", "glm", "local-glm-boost"],
     columns=["train", "test"],
     dtype=float,
 )
-df_loss.loc["intercept", "train"] = deviance(y=y_train, z=z_opt, w=w_train).mean()
-df_loss.loc["intercept", "test"] = deviance(y=y_test, z=z_opt, w=w_test).mean()
-df_loss.loc["glm", "train"] = deviance(
+df_deviance.loc["intercept", "train"] = deviance(y=y_train, z=z_opt, w=w_train).mean()
+df_deviance.loc["intercept", "test"] = deviance(y=y_test, z=z_opt, w=w_test).mean()
+df_deviance.loc["glm", "train"] = deviance(
     y=y_train, z=model.z0 + (model.beta0 * X_train).sum(axis=1), w=w_train
 ).mean()
-df_loss.loc["glm", "test"] = deviance(
+df_deviance.loc["glm", "test"] = deviance(
     y=y_test, z=model.z0 + (model.beta0 * X_test).sum(axis=1), w=w_test
 ).mean()
-df_loss.loc["local-glm-boost", "train"] = deviance(
-    y=y_train, z=model.predict(X_train), w=w_train
+df_deviance.loc["local-glm-boost", "train"] = deviance(
+    y=y_train, z=model.z0 + model.predict(X_train), w=w_train
 ).mean()
-df_loss.loc["local-glm-boost", "test"] = deviance(
-    y=y_test, z=model.predict(X_test), w=w_test
+df_deviance.loc["local-glm-boost", "test"] = deviance(
+    y=y_test, z=model.z0 + model.predict(X_test), w=w_test
 ).mean()
-df_loss.loc["local-glm-boost-light", "train"] = deviance(
-    y=y_train, z=model_light.predict(X_train), w=w_train
-).mean()
-df_loss.loc["local-glm-boost-light", "test"] = deviance(
-    y=y_test, z=model_light.predict(X_test), w=w_test
-).mean()
+df_deviance.to_csv(f"{output_path}/results_deviance.csv")
 
 # Negative log-likelihood
-df_loss_2 = pd.DataFrame(
-    index=["intercept", "glm", "local-glm-boost", "local-glm-boost-light"],
+df_loss = pd.DataFrame(
+    index=["intercept", "glm", "local-glm-boost"],
     columns=["train", "test"],
     dtype=float,
 )
-df_loss_2.loc["intercept", "train"] = model.distribution.loss(
+df_loss.loc["intercept", "train"] = model.distribution.loss(
     y=y_train, z=z_opt, w=w_train
 ).mean()
-df_loss_2.loc["intercept", "test"] = model.distribution.loss(
+df_loss.loc["intercept", "test"] = model.distribution.loss(
     y=y_test, z=z_opt, w=w_test
 ).mean()
-df_loss_2.loc["glm", "train"] = model.distribution.loss(
+df_loss.loc["glm", "train"] = model.distribution.loss(
     y=y_train, z=model.z0 + (model.beta0 * X_train).sum(axis=1), w=w_train
 ).mean()
-df_loss_2.loc["glm", "test"] = model.distribution.loss(
+df_loss.loc["glm", "test"] = model.distribution.loss(
     y=y_test, z=model.z0 + (model.beta0 * X_test).sum(axis=1), w=w_test
 ).mean()
-df_loss_2.loc["local-glm-boost", "train"] = model.distribution.loss(
+df_loss.loc["local-glm-boost", "train"] = model.distribution.loss(
     y=y_train, z=model.predict(X_train), w=w_train
 ).mean()
-df_loss_2.loc["local-glm-boost", "test"] = model.distribution.loss(
+df_loss.loc["local-glm-boost", "test"] = model.distribution.loss(
     y=y_test, z=model.predict(X_test), w=w_test
 ).mean()
-df_loss_2.loc["local-glm-boost-light", "train"] = model.distribution.loss(
-    y=y_train, z=model_light.predict(X_train), w=w_train
-).mean()
-df_loss_2.loc["local-glm-boost-light", "test"] = model.distribution.loss(
-    y=y_test, z=model_light.predict(X_test), w=w_test
-).mean()
-
-# Create dataframes with the results
-# Crate a large df with both loss measures
-df_loss_all = pd.concat([df_loss, df_loss_2], axis=1, keys=["deviance", "loss"])
+df_loss.to_csv(f"{output_path}/results_loss.csv")
 
 # Save the total CV losses
-loss_train = pd.DataFrame(data=np.sum(loss["train"], axis=0), columns=features_to_use)
-loss_valid = pd.DataFrame(data=np.sum(loss["valid"], axis=0), columns=features_to_use)
+loss_train = pd.DataFrame(data=np.sum(loss["train"], axis=0), columns=features)
+loss_valid = pd.DataFrame(data=np.sum(loss["valid"], axis=0), columns=features)
+loss_train.to_csv(f"{output_path}/loss_tuning_train.csv")
+loss_valid.to_csv(f"{output_path}/loss_tuning_valid.csv")
+
 
 # Crate a dataframe with all models predictions on the validation data
 mu_hat = pd.DataFrame(columns=df_loss.index, index=y_test.index)
@@ -271,25 +228,22 @@ mu_hat["true"] = y_test / w_test
 mu_hat["intercept"] = np.exp(z_opt) * np.ones(len(y_test))
 mu_hat["glm"] = np.exp(model.z0 + (model.beta0 * X_test).sum(axis=1))
 mu_hat["local-glm-boost"] = np.exp(model.predict(X_test))
-mu_hat["local-glm-boost-light"] = np.exp(model_light.predict(X_test))
+mu_hat.to_csv(f"{output_path}/mu_hat.csv")
 
 # Create a dataframe with feature importances
-feature_importances = pd.DataFrame(index=features_to_use, columns=features_to_use)
-for feature in features_to_use:
+feature_importances = pd.DataFrame(index=features, columns=features)
+for feature in features:
     if n_estimators[feature] != 0:
         feature_importances.loc[feature] = model.compute_feature_importances(feature)
-
-# Make a dataframe with n_esimators and inital beta values
-kappa_beta = pd.DataFrame(index=features_to_use, columns=["n_estimators", "beta0"])
-kappa_beta["n_estimators"] = n_estimators
-kappa_beta["beta0"] = model.beta0
-
-# Save the results as csv files
-df_loss_all.to_csv(f"{output_path}/df_loss_all.csv")
-loss_train.to_csv(f"{output_path}/loss_train.csv")
-loss_valid.to_csv(f"{output_path}/loss_valid.csv")
-mu_hat.to_csv(f"{output_path}/mu_hat.csv")
 feature_importances.to_csv(f"{output_path}/feature_importances.csv")
-kappa_beta.to_csv(f"{output_path}/kappa_beta.csv")
+
+df_n_estimators = pd.DataFrame(data = n_estimators.values(), index = n_estimators.keys(), columns = ["n_estimators"])
+df_n_estimators.to_csv(f"{output_path}/n_estimators.csv")
+
+beta_estimates = pd.DataFrame(index=features, columns=["beta0"])
+beta_estimates.loc["intercept"] = z_opt
+for j,feature in enumerate(features):
+    beta_estimates.loc[feature] = model.beta0[j]
+beta_estimates.to_csv(f"{output_path}/beta_estimates.csv")
 
 logger.log("Done!")

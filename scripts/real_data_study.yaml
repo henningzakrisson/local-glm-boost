@@ -1,13 +1,13 @@
-n: all
+n: 10000
 features_to_use:
   - VehPower
   - VehAge
   - DrivAge
   - BonusMalus
   - Density
-  - Diesel
-  - Area
+  - VehGas
   - VehBrand
+  - Area
   - Region
 random_seed: 11
 target: ClaimNb
@@ -15,8 +15,8 @@ weights: Exposure
 
 distribution: poisson
 
-learning_rate: 0.01
-n_estimators_max: 1000
+learning_rate: 0.001
+n_estimators_max: 100
 min_samples_split: 20
 min_samples_leaf: 20
 max_depth: 2
