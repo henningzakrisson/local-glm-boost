@@ -320,10 +320,11 @@ class LocalGLMBooster:
                 else:
                     feature_importances[feature_name] = 0
             if normalize:
-                feature_importances = {
-                    key: value / sum(feature_importances.values())
-                    for key, value in feature_importances.items()
-                }
+                if sum(feature_importances.values())!=0:
+                    feature_importances = {
+                        key: value / sum(feature_importances.values())
+                        for key, value in feature_importances.items()
+                    }
         return feature_importances
 
     def reset(self, n_estimators: Optional[Union[int, List[int]]] = None) -> None:

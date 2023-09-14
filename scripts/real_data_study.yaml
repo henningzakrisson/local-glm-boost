@@ -1,4 +1,4 @@
-n: 10000
+n: all
 features_to_use:
   - VehPower
   - VehAge
@@ -6,25 +6,26 @@ features_to_use:
   - BonusMalus
   - Density
   - VehGas
-  - VehBrand
   - Area
-  - Region
-random_seed: 11
+  - VehBrand
+random_seed: 14
 target: ClaimNb
 weights: Exposure
 
 distribution: poisson
 
-learning_rate: 0.001
-n_estimators_max: 100
-min_samples_split: 20
-min_samples_leaf: 20
+learning_rate: 0.01
+# n_estimators can be a list of values if different for different features
+# be careful with the order of features and don't forget the dummy encoding
+n_estimators_max: 10
+min_samples_split: 6
+min_samples_leaf: 5
 max_depth: 2
 glm_init: true
 features: null
 
 test_size: 0.1
-n_splits: 2
+n_splits: 5
 parallel: true
 n_jobs: -1
 stratified: true

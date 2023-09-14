@@ -91,8 +91,9 @@ for feature in ['VehBrand','Region']:
         parallel_fit.append(dummy_feature_indices)
         features += dummies.columns.tolist()
 
+rng = np.random.default_rng(seed=random_seed)
 if n != "all":
-    df = df.sample(n)
+    df = df.sample(n, random_state = rng.integers(0, 10000))
 n = len(df)
 
 X = df[features].astype(float)
@@ -103,7 +104,7 @@ X = X / X.max(axis=0)
 
 # Tune n_estimators
 logger.log("Tuning model")
-rng = np.random.default_rng(seed=random_seed)
+
 X_train, X_test, y_train, y_test, w_train, w_test = train_test_split(
     X, y, w, test_size=test_size, random_state=rng.integers(0, 10000)
 )
@@ -145,7 +146,7 @@ model = LocalGLMBooster(
     min_samples_leaf=min_samples_leaf,
     max_depth=max_depth,
 )
-model.fit(X_train, y_train, w_train)
+model.fit(X_train, y_train, w_train, parallel_fit=parallel_fit)
 
 # Intercept model
 to_minimize = lambda z: model.distribution.loss(y=y_train, z=z, w=w_train).mean()
@@ -182,10 +183,10 @@ df_deviance.loc["glm", "test"] = deviance(
     y=y_test, z=model.z0 + (model.beta0 * X_test).sum(axis=1), w=w_test
 ).mean()
 df_deviance.loc["local-glm-boost", "train"] = deviance(
-    y=y_train, z=model.z0 + model.predict(X_train), w=w_train
+    y=y_train, z=model.predict(X_train), w=w_train
 ).mean()
 df_deviance.loc["local-glm-boost", "test"] = deviance(
-    y=y_test, z=model.z0 + model.predict(X_test), w=w_test
+    y=y_test, z=model.predict(X_test), w=w_test
 ).mean()
 df_deviance.to_csv(f"{output_path}/results_deviance.csv")
 
@@ -223,12 +224,13 @@ loss_valid.to_csv(f"{output_path}/loss_tuning_valid.csv")
 
 
 # Crate a dataframe with all models predictions on the validation data
-mu_hat = pd.DataFrame(columns=df_loss.index, index=y_test.index)
-mu_hat["true"] = y_test / w_test
-mu_hat["intercept"] = np.exp(z_opt) * np.ones(len(y_test))
-mu_hat["glm"] = np.exp(model.z0 + (model.beta0 * X_test).sum(axis=1))
-mu_hat["local-glm-boost"] = np.exp(model.predict(X_test))
-mu_hat.to_csv(f"{output_path}/mu_hat.csv")
+predictions = pd.DataFrame(columns=df_loss.index, index=y_test.index)
+predictions["y"] = y_test
+predictions["w"] = w_test
+predictions["intercept"] = np.exp(z_opt) * np.ones(len(y_test))
+predictions["glm"] = np.exp(model.z0 + (model.beta0 * X_test).sum(axis=1))
+predictions["local-glm-boost"] = np.exp(model.predict(X_test))
+predictions.to_csv(f"{output_path}/predictions.csv")
 
 # Create a dataframe with feature importances
 feature_importances = pd.DataFrame(index=features, columns=features)
