@@ -70,30 +70,40 @@ logger.log("Loading data")
 ssl._create_default_https_context = ssl._create_unverified_context
 df_num = fetch_openml(data_id=41214, as_frame=True).data
 df_sev = fetch_openml(data_id=41215, as_frame=True).data
-df_sev_tot = df_sev.groupby('IDpol')['ClaimAmount'].sum()
-df = df_num.merge(df_sev_tot, left_on='IDpol', right_index=True, how='left')
-df.loc[df['ClaimAmount'].isna(), 'ClaimNb'] = 0
-df.loc[df['ClaimAmount'].isna(), 'ClaimAmount'] = 0
-df = df.loc[df['ClaimNb'] <=5]
+df_sev_tot = df_sev.groupby("IDpol")["ClaimAmount"].sum()
+df = df_num.merge(df_sev_tot, left_on="IDpol", right_index=True, how="left")
+df.loc[df["ClaimAmount"].isna(), "ClaimNb"] = 0
+df.loc[df["ClaimAmount"].isna(), "ClaimAmount"] = 0
+df = df.loc[df["ClaimNb"] <= 5]
 
-df['Exposure'] = df['Exposure'].clip(0, 1)
-df['Area'] = df['Area'].apply(lambda x: ord(x) - 65)
-df['VehGas'] = df['VehGas'].apply(lambda x: 1 if x == 'Regular' else 0)
+df["Exposure"] = df["Exposure"].clip(0, 1)
+df["Area"] = df["Area"].apply(lambda x: ord(x) - 65)
+df["VehGas"] = df["VehGas"].apply(lambda x: 1 if x == "Regular" else 0)
 
-continous_features = ['VehPower','VehAge','DrivAge','BonusMalus','Density','Area','VehGas']
+continous_features = [
+    "VehPower",
+    "VehAge",
+    "DrivAge",
+    "BonusMalus",
+    "Density",
+    "Area",
+    "VehGas",
+]
 features = [feature for feature in continous_features if feature in features_to_use]
 parallel_fit = []
-for feature in ['VehBrand','Region']:
+for feature in ["VehBrand", "Region"]:
     if feature in features_to_use:
         dummies = pd.get_dummies(df[feature], prefix=feature)
         df = pd.concat([df, dummies], axis=1)
-        dummy_feature_indices = [j for j in range(len(features),len(features)+len(dummies.columns))]
+        dummy_feature_indices = [
+            j for j in range(len(features), len(features) + len(dummies.columns))
+        ]
         parallel_fit.append(dummy_feature_indices)
         features += dummies.columns.tolist()
 
 rng = np.random.default_rng(seed=random_seed)
 if n != "all":
-    df = df.sample(n, random_state = rng.integers(0, 10000))
+    df = df.sample(n, random_state=rng.integers(0, 10000))
 n = len(df)
 
 X = df[features].astype(float)
@@ -248,12 +258,14 @@ for feature in features:
         feature_importances.loc[feature] = model.compute_feature_importances(feature)
 feature_importances.to_csv(f"{output_path}/feature_importances.csv")
 
-df_n_estimators = pd.DataFrame(data = n_estimators.values(), index = n_estimators.keys(), columns = ["n_estimators"])
+df_n_estimators = pd.DataFrame(
+    data=n_estimators.values(), index=n_estimators.keys(), columns=["n_estimators"]
+)
 df_n_estimators.to_csv(f"{output_path}/n_estimators.csv")
 
 beta_estimates = pd.DataFrame(index=features, columns=["beta0"])
 beta_estimates.loc["intercept"] = z_opt
-for j,feature in enumerate(features):
+for j, feature in enumerate(features):
     beta_estimates.loc[feature] = model.beta0[j]
 beta_estimates.to_csv(f"{output_path}/beta_estimates.csv")
 
