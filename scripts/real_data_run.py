@@ -255,7 +255,9 @@ predictions.to_csv(f"{output_path}/predictions.csv")
 feature_importances = pd.DataFrame(index=features, columns=features)
 for feature in features:
     if n_estimators[feature] != 0:
-        feature_importances.loc[feature] = model.compute_feature_importances(feature)
+        feature_importances.loc[feature] = model.compute_feature_importances(
+            feature, normalize=False
+        )
 feature_importances.to_csv(f"{output_path}/feature_importances.csv")
 
 df_n_estimators = pd.DataFrame(
