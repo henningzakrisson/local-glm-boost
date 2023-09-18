@@ -8,6 +8,7 @@ features_to_use:
   - VehGas
   - Area
   - VehBrand
+  - Region
 random_seed: 14
 target: ClaimNb
 weights: Exposure
@@ -15,17 +16,15 @@ weights: Exposure
 distribution: poisson
 
 learning_rate: 0.01
-# n_estimators can be a list of values if different for different features
-# be careful with the order of features and don't forget the dummy encoding
-n_estimators_max: 10
 min_samples_split: 6
 min_samples_leaf: 5
 max_depth: 2
 glm_init: true
 features: null
 
+n_estimators_max: 1000
 test_size: 0.1
-n_splits: 5
+n_splits: 2
 parallel: true
 n_jobs: -1
 stratified: true

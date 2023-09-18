@@ -102,6 +102,15 @@ w = df[weights]
 
 X = X / X.max(axis=0)
 
+# Process the n_estimators_max hyperparameter
+if isinstance(n_estimators_max, dict):
+    # Find the position of every key in the features list and
+    # create a list of ints with the values
+    n_estimators_dict = n_estimators_max.copy()
+    n_estimators_max = [0] * len(features)
+    for key, value in n_estimators_dict.items():
+        n_estimators_max[features.index(key)] = value
+
 # Tune n_estimators
 logger.log("Tuning model")
 

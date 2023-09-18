@@ -14,5 +14,3 @@ MANIFEST
 .venv
 venv/
 .idea/
-notebooks/
-/data/

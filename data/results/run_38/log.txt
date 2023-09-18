@@ -1,0 +1,4 @@
+[2023-09-15 17:53][run_38][Loading configuration]
+[2023-09-15 17:53][run_38][Loading data]
+[2023-09-15 17:53][run_38][Tuning model]
+[2023-09-15 17:53][run_38][performing cross-validation on 2 folds]
