@@ -1,4 +1,4 @@
-n_train: 10000
+n_train: all
 features_to_use:
   - VehPower
   - VehAge
@@ -7,6 +7,8 @@ features_to_use:
   - Density
   - VehGas
   - Area
+  - VehBrand
+  - Region
 random_seed: 14
 target: ClaimNb
 weights: Exposure
@@ -20,7 +22,7 @@ max_depth: 2
 glm_init: true
 features: null
 
-n_estimators_max: 10
+n_estimators_max: 1000
 test_size: 0.1
 n_splits: 2
 parallel: true
