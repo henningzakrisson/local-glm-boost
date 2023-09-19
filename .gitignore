@@ -14,6 +14,7 @@ MANIFEST
 .venv
 venv/
 .idea/
-/out/
 /notebooks/
-/data/
+/data/output
+/data/input
+

@@ -4,9 +4,11 @@ import ssl
 import os
 import yaml
 import shutil
+import logging
 
-from sklearn.datasets import fetch_openml
-from sklearn.model_selection import train_test_split
+from rpy2.robjects import r
+from rpy2.rinterface_lib.callbacks import logger as rpy2_logger
+rpy2_logger.setLevel(logging.ERROR)
 
 from local_glm_boost import LocalGLMBooster
 from local_glm_boost.utils.tuning import tune_n_estimators
@@ -16,7 +18,7 @@ config_name = "real_data_config"
 
 # Set up output folder, configuration file, run_id and logger
 script_dir = os.path.dirname(os.path.realpath(__file__))
-folder_path = os.path.join(script_dir, "../../out/")
+folder_path = os.path.join(script_dir, "../../data/output/")
 config_path = os.path.join(script_dir, f"{config_name}.yaml")
 with open(config_path, "r") as f:
     config = yaml.load(f, Loader=yaml.FullLoader)
@@ -33,11 +35,11 @@ if os.path.exists(folder_path) and os.listdir(folder_path):
 else:
     run_id = 0
 
-output_path = os.path.join(folder_path, f"run_{run_id}")
+output_path = os.path.join(folder_path, f"run_{run_id}/")
 os.makedirs(output_path)
 
 # Put the config in the output folder
-shutil.copyfile(config_path, f"{output_path}/config.yaml")
+shutil.copyfile(config_path, f"{output_path}config.yaml")
 
 # Set up logger
 logger = LocalGLMBoostLogger(
@@ -48,7 +50,7 @@ logger.append_format_level(f"run_{run_id}")
 
 # Load stuff from the config
 logger.log("Loading configuration")
-n = config["n"]
+n_train = config["n_train"]
 features_to_use = config["features_to_use"]
 target = config["target"]
 weights = config["weights"]
@@ -68,20 +70,19 @@ n_jobs = config["n_jobs"]
 
 # Load and preprocess data
 logger.log("Loading data")
-ssl._create_default_https_context = ssl._create_unverified_context
-df_num = fetch_openml(data_id=41214, as_frame=True).data
-df_sev = fetch_openml(data_id=41215, as_frame=True).data
-df_sev_tot = df_sev.groupby("IDpol")["ClaimAmount"].sum()
-df = df_num.merge(df_sev_tot, left_on="IDpol", right_index=True, how="left")
-df.loc[df["ClaimAmount"].isna(), "ClaimNb"] = 0
-df.loc[df["ClaimAmount"].isna(), "ClaimAmount"] = 0
-df = df.loc[df["ClaimNb"] <= 5]
+with open('load_data.R', 'r') as file:
+    r_script = file.read()
+r_script_modified = f'output_dir <- "{output_path}"\n' + r_script
+r(r_script_modified)
 
-df["Exposure"] = df["Exposure"].clip(0, 1)
-df["Area"] = df["Area"].apply(lambda x: ord(x) - 65)
-df["VehGas"] = df["VehGas"].apply(lambda x: 1 if x == "Regular" else 0)
+df_train = pd.read_csv(output_path + 'train_data.csv', index_col=0)
+df_test = pd.read_csv(output_path + 'test_data.csv', index_col=0)
 
-continous_features = [
+df_train["train"] = 1
+df_test["train"] = 0
+df = pd.concat([df_train, df_test], axis=0)
+
+continuous_features = [
     "VehPower",
     "VehAge",
     "DrivAge",
@@ -90,9 +91,19 @@ continous_features = [
     "Area",
     "VehGas",
 ]
-features = [feature for feature in continous_features if feature in features_to_use]
+
+categorical_features = [
+    "VehBrand",
+    "Region",
+]
 parallel_fit = []
-for feature in ["VehBrand", "Region"]:
+
+features = [feature for feature in continuous_features if feature in features_to_use]
+
+df["Area"] = df["Area"].apply(lambda x: ord(x) - 65)
+df["VehGas"] = df["VehGas"].apply(lambda x: 1 if x == "Regular" else 0)
+
+for feature in categorical_features:
     if feature in features_to_use:
         dummies = pd.get_dummies(df[feature], prefix=feature)
         df = pd.concat([df, dummies], axis=1)
@@ -102,16 +113,29 @@ for feature in ["VehBrand", "Region"]:
         parallel_fit.append(dummy_feature_indices)
         features += dummies.columns.tolist()
 
+for feature in continuous_features:
+    if feature in features_to_use:
+        df[feature] = df[feature] / df.loc[df["train"] == 1, feature].max()
+
+# Re-split train and test
+df_train = df.loc[df["train"] == 1]
+df_test = df.loc[df["train"] == 0]
+
 rng = np.random.default_rng(seed=random_seed)
-if n != "all":
-    df = df.sample(n, random_state=rng.integers(0, 10000))
-n = len(df)
+if n_train != "all":
+    df_train = df_train.sample(n_train, random_state=rng.integers(0, 10000))
+n = len(df_train)+len(df_test)
 
-X = df[features].astype(float)
-y = df[target]
-w = df[weights]
+X_train = df_train[features].astype(float)
+y_train = df_train[target]
+w_train = df_train[weights]
 
-X = X / X.max(axis=0)
+X_test = df_test[features].astype(float)
+y_test = df_test[target]
+w_test = df_test[weights]
+
+# Tune n_estimators
+logger.log("Tuning model")
 
 # Process the n_estimators_max hyperparameter
 if isinstance(n_estimators_max, dict):
@@ -121,13 +145,6 @@ if isinstance(n_estimators_max, dict):
     n_estimators_max = [0] * len(features)
     for key, value in n_estimators_dict.items():
         n_estimators_max[features.index(key)] = value
-
-# Tune n_estimators
-logger.log("Tuning model")
-
-X_train, X_test, y_train, y_test, w_train, w_test = train_test_split(
-    X, y, w, test_size=test_size, random_state=rng.integers(0, 10000)
-)
 
 model = LocalGLMBooster(
     distribution=distribution,
@@ -178,8 +195,8 @@ res = minimize(
 )
 z_opt = res.x
 
-# Summarize results
-logger.log("Summarizing results")
+# Summarize output
+logger.log("Summarizing output")
 
 
 # Define the Poisson deviance
@@ -208,7 +225,7 @@ df_deviance.loc["local-glm-boost", "train"] = deviance(
 df_deviance.loc["local-glm-boost", "test"] = deviance(
     y=y_test, z=model.predict(X_test), w=w_test
 ).mean()
-df_deviance.to_csv(f"{output_path}/results_deviance.csv")
+df_deviance.to_csv(f"{output_path}results_deviance.csv")
 
 # Negative log-likelihood
 df_loss = pd.DataFrame(
@@ -234,13 +251,13 @@ df_loss.loc["local-glm-boost", "train"] = model.distribution.loss(
 df_loss.loc["local-glm-boost", "test"] = model.distribution.loss(
     y=y_test, z=model.predict(X_test), w=w_test
 ).mean()
-df_loss.to_csv(f"{output_path}/results_loss.csv")
+df_loss.to_csv(f"{output_path}results_loss.csv")
 
 # Save the total CV losses
 loss_train = pd.DataFrame(data=np.sum(loss["train"], axis=0), columns=features)
 loss_valid = pd.DataFrame(data=np.sum(loss["valid"], axis=0), columns=features)
-loss_train.to_csv(f"{output_path}/loss_tuning_train.csv")
-loss_valid.to_csv(f"{output_path}/loss_tuning_valid.csv")
+loss_train.to_csv(f"{output_path}loss_tuning_train.csv")
+loss_valid.to_csv(f"{output_path}loss_tuning_valid.csv")
 
 
 # Crate a dataframe with all models predictions on the validation data
@@ -250,7 +267,7 @@ predictions["w"] = w_test
 predictions["intercept"] = np.exp(z_opt) * np.ones(len(y_test))
 predictions["glm"] = np.exp(model.z0 + (model.beta0 * X_test).sum(axis=1))
 predictions["local-glm-boost"] = np.exp(model.predict(X_test))
-predictions.to_csv(f"{output_path}/predictions.csv")
+predictions.to_csv(f"{output_path}predictions.csv")
 
 # Create a dataframe with feature importances
 feature_importances = pd.DataFrame(index=features, columns=features)
@@ -259,17 +276,17 @@ for feature in features:
         feature_importances.loc[feature] = model.compute_feature_importances(
             feature, normalize=False
         )
-feature_importances.to_csv(f"{output_path}/feature_importances.csv")
+feature_importances.to_csv(f"{output_path}feature_importances.csv")
 
 df_n_estimators = pd.DataFrame(
     data=n_estimators.values(), index=n_estimators.keys(), columns=["n_estimators"]
 )
-df_n_estimators.to_csv(f"{output_path}/n_estimators.csv")
+df_n_estimators.to_csv(f"{output_path}n_estimators.csv")
 
 beta_estimates = pd.DataFrame(index=features, columns=["beta0"])
 beta_estimates.loc["intercept"] = z_opt
 for j, feature in enumerate(features):
     beta_estimates.loc[feature] = model.beta0[j]
-beta_estimates.to_csv(f"{output_path}/beta_estimates.csv")
+beta_estimates.to_csv(f"{output_path}beta_estimates.csv")
 
 logger.log("Done!")

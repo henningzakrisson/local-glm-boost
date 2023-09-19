@@ -1,4 +1,4 @@
-n: 10000
+n_train: 10000
 features_to_use:
   - VehPower
   - VehAge

@@ -14,7 +14,7 @@ from local_glm_boost.utils.logger import LocalGLMBoostLogger
 
 # Set up output folder, configuration file, run_id and logger
 script_dir = os.path.dirname(os.path.realpath(__file__))
-folder_path = os.path.join(script_dir, "../../out/")
+folder_path = os.path.join(script_dir, "../../results/output/")
 config_path = os.path.join(script_dir, f"{config_name}.yaml")
 with open(config_path, "r") as f:
     config = yaml.load(f, Loader=yaml.FullLoader)
@@ -169,10 +169,10 @@ results.loc["local_glm_boost"] = [
 ]
 
 
-# Save results
+# Save output
 shutil.copyfile(config_path, f"{output_path}/config.yaml")
 
-logger.log("Saving results...")
+logger.log("Saving output...")
 results.to_csv(f"{output_path}/MSE.csv")
 for data_set in ["train", "valid"]:
     pd.DataFrame(np.sum(tuning_results["loss"][data_set], axis=0)).to_csv(
