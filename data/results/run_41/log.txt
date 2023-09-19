@@ -1,0 +1,3 @@
+[2023-09-18 10:58][run_41][Loading configuration]
+[2023-09-18 10:58][run_41][Loading data]
+[2023-09-18 10:59][run_41][Fitting a GLM using statsmodels]

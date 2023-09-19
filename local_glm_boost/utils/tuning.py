@@ -99,8 +99,9 @@ def tune_n_estimators(
     )
 
     if "feature_names" in locals():
-        n_estimators = pd.Series(n_estimators, index=feature_names)
-
+        n_estimators = {
+            feature: n_estimators[j] for j, feature in enumerate(feature_names)
+        }
     return {
         "n_estimators": n_estimators,
         "loss": loss,

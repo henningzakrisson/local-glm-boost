@@ -47,7 +47,7 @@ class FeatureSelectionDict(dict):
                         feature_names.index(feature) for feature in feature_selection[j]
                     ]
         else:
-            for j, feature_name in enumerate(feature_names):
+            for j, feature_name in enumerate(feature_selection.keys()):
                 self[j] = [
                     feature_names.index(feature)
                     for feature in feature_selection[feature_name]
