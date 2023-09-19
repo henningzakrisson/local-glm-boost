@@ -18,10 +18,13 @@ config_name = "real_data_config"
 
 # Set up output folder, configuration file, run_id and logger
 script_dir = os.path.dirname(os.path.realpath(__file__))
-folder_path = os.path.join(script_dir, "../../data/output/")
 config_path = os.path.join(script_dir, f"{config_name}.yaml")
 with open(config_path, "r") as f:
     config = yaml.load(f, Loader=yaml.FullLoader)
+folder_path = os.path.join(script_dir, "../../data/output/")
+save_to_git = config["save_to_git"]
+if save_to_git:
+    folder_path = folder_path[:-1] + "_saved/"
 
 # Find a run_id
 if os.path.exists(folder_path) and os.listdir(folder_path):

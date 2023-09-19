@@ -28,3 +28,5 @@ n_splits: 2
 parallel: true
 n_jobs: -1
 stratified: true
+
+save_to_git: true
