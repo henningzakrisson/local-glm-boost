@@ -1,0 +1,28 @@
+n: 10000
+features_to_use:
+  - VehPower
+  - VehAge
+  - DrivAge
+  - BonusMalus
+  - Density
+  - VehGas
+  - Area
+random_seed: 14
+target: ClaimNb
+weights: Exposure
+
+distribution: poisson
+
+learning_rate: 0.01
+min_samples_split: 6
+min_samples_leaf: 5
+max_depth: 2
+glm_init: true
+features: null
+
+n_estimators_max: 10
+test_size: 0.1
+n_splits: 2
+parallel: true
+n_jobs: -1
+stratified: true
