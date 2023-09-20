@@ -29,4 +29,4 @@ parallel: true
 n_jobs: -1
 stratified: true
 
-save_to_git: true
+save_to_git: false

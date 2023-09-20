@@ -1,6 +1,5 @@
 import numpy as np
 import pandas as pd
-import ssl
 import os
 import yaml
 import shutil
@@ -92,19 +91,18 @@ continuous_features = [
     "BonusMalus",
     "Density",
     "Area",
-    "VehGas",
 ]
 
 categorical_features = [
     "VehBrand",
     "Region",
+    "VehGas",
 ]
 parallel_fit = []
 
 features = [feature for feature in continuous_features if feature in features_to_use]
 
 df["Area"] = df["Area"].apply(lambda x: ord(x) - 65)
-df["VehGas"] = df["VehGas"].apply(lambda x: 1 if x == "Regular" else 0)
 
 for feature in categorical_features:
     if feature in features_to_use:
@@ -190,7 +188,7 @@ model.fit(X_train, y_train, w_train, parallel_fit=parallel_fit)
 
 # Intercept model
 to_minimize = lambda z: model.distribution.loss(y=y_train, z=z, w=w_train).mean()
-z0 = np.log((y_train / w_train).mean())
+z0 = np.log((y_train.sum() / w_train.sum()))
 from scipy.optimize import minimize
 
 res = minimize(
@@ -203,10 +201,12 @@ logger.log("Summarizing output")
 
 
 # Define the Poisson deviance
-def deviance(y, z, w):
-    y_log_y = np.zeros_like(y)
-    y_log_y[y > 0] = y[y > 0] * np.log(y[y > 0])
-    return 2 * (y_log_y - y * (np.log(w) + z + 1) + w * np.exp(z))
+def deviance(y,w,z):
+    log_y = np.zeros(len(y))
+    log_y[y>0] = np.log(y[y>0])
+
+    dev = 2 * (w*np.exp(z) + y*(log_y - np.log(w)-z-1)).mean()
+    return dev
 
 
 df_deviance = pd.DataFrame(
