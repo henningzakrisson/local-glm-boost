@@ -1,4 +1,4 @@
-n_train: all
+n_train: 10000
 features_to_use:
   - VehPower
   - VehAge
@@ -22,7 +22,7 @@ max_depth: 2
 glm_init: true
 features: null
 
-n_estimators_max: 1000
+n_estimators_max: 10
 test_size: 0.1
 n_splits: 2
 parallel: true

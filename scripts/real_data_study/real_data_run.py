@@ -187,74 +187,10 @@ model = LocalGLMBooster(
 model.fit(X_train, y_train, w_train, parallel_fit=parallel_fit)
 
 # Intercept model
-to_minimize = lambda z: model.distribution.loss(y=y_train, z=z, w=w_train).mean()
 z0 = np.log((y_train.sum() / w_train.sum()))
-from scipy.optimize import minimize
-
-res = minimize(
-    to_minimize, z0, method="nelder-mead", options={"xatol": 1e-8, "disp": False}
-)
-z_opt = res.x
 
 # Summarize output
 logger.log("Summarizing output")
-
-
-# Define the Poisson deviance
-def deviance(y,w,z):
-    log_y = np.zeros(len(y))
-    log_y[y>0] = np.log(y[y>0])
-
-    dev = 2 * (w*np.exp(z) + y*(log_y - np.log(w)-z-1)).mean()
-    return dev
-
-
-df_deviance = pd.DataFrame(
-    index=["intercept", "glm", "local-glm-boost"],
-    columns=["train", "test"],
-    dtype=float,
-)
-df_deviance.loc["intercept", "train"] = deviance(y=y_train, z=z_opt, w=w_train).mean()
-df_deviance.loc["intercept", "test"] = deviance(y=y_test, z=z_opt, w=w_test).mean()
-df_deviance.loc["glm", "train"] = deviance(
-    y=y_train, z=model.z0 + (model.beta0 * X_train).sum(axis=1), w=w_train
-).mean()
-df_deviance.loc["glm", "test"] = deviance(
-    y=y_test, z=model.z0 + (model.beta0 * X_test).sum(axis=1), w=w_test
-).mean()
-df_deviance.loc["local-glm-boost", "train"] = deviance(
-    y=y_train, z=model.predict(X_train), w=w_train
-).mean()
-df_deviance.loc["local-glm-boost", "test"] = deviance(
-    y=y_test, z=model.predict(X_test), w=w_test
-).mean()
-df_deviance.to_csv(f"{output_path}results_deviance.csv")
-
-# Negative log-likelihood
-df_loss = pd.DataFrame(
-    index=["intercept", "glm", "local-glm-boost"],
-    columns=["train", "test"],
-    dtype=float,
-)
-df_loss.loc["intercept", "train"] = model.distribution.loss(
-    y=y_train, z=z_opt, w=w_train
-).mean()
-df_loss.loc["intercept", "test"] = model.distribution.loss(
-    y=y_test, z=z_opt, w=w_test
-).mean()
-df_loss.loc["glm", "train"] = model.distribution.loss(
-    y=y_train, z=model.z0 + (model.beta0 * X_train).sum(axis=1), w=w_train
-).mean()
-df_loss.loc["glm", "test"] = model.distribution.loss(
-    y=y_test, z=model.z0 + (model.beta0 * X_test).sum(axis=1), w=w_test
-).mean()
-df_loss.loc["local-glm-boost", "train"] = model.distribution.loss(
-    y=y_train, z=model.predict(X_train), w=w_train
-).mean()
-df_loss.loc["local-glm-boost", "test"] = model.distribution.loss(
-    y=y_test, z=model.predict(X_test), w=w_test
-).mean()
-df_loss.to_csv(f"{output_path}results_loss.csv")
 
 # Save the total CV losses
 loss_train = pd.DataFrame(data=np.sum(loss["train"], axis=0), columns=features)
@@ -262,15 +198,22 @@ loss_valid = pd.DataFrame(data=np.sum(loss["valid"], axis=0), columns=features)
 loss_train.to_csv(f"{output_path}loss_tuning_train.csv")
 loss_valid.to_csv(f"{output_path}loss_tuning_valid.csv")
 
+# Crate a dataframe with all model predictions on test vs train data
+test_data = pd.DataFrame(index=y_test.index)
+test_data["y"] = y_test
+test_data["w"] = w_test
+test_data["z_0"] = np.full(len(y_test), z0)
+test_data["z_glm"] = model.z0 + (model.beta0 * X_test).sum(axis=1)
+test_data["z_local_glm_boost"] = model.predict(X_test)
+test_data.to_csv(f"{output_path}test_data.csv")
 
-# Crate a dataframe with all models predictions on the validation data
-predictions = pd.DataFrame(columns=df_loss.index, index=y_test.index)
-predictions["y"] = y_test
-predictions["w"] = w_test
-predictions["intercept"] = np.exp(z_opt) * np.ones(len(y_test))
-predictions["glm"] = np.exp(model.z0 + (model.beta0 * X_test).sum(axis=1))
-predictions["local-glm-boost"] = np.exp(model.predict(X_test))
-predictions.to_csv(f"{output_path}predictions.csv")
+train_data = pd.DataFrame(index=y_train.index)
+train_data["y"] = y_train
+train_data["w"] = w_train
+train_data["z_0"] = np.full(len(y_train), z0)
+train_data["z_glm"] = model.z0 + (model.beta0 * X_train).sum(axis=1)
+train_data["z_local_glm_boost"] = model.predict(X_train)
+train_data.to_csv(f"{output_path}train_data.csv")
 
 # Create a dataframe with feature importances
 feature_importances = pd.DataFrame(index=features, columns=features)
@@ -279,17 +222,19 @@ for feature in features:
         feature_importances.loc[feature] = model.compute_feature_importances(
             feature, normalize=False
         )
+    else:
+        feature_importances.loc[feature] = 0
 feature_importances.to_csv(f"{output_path}feature_importances.csv")
 
-df_n_estimators = pd.DataFrame(
-    data=n_estimators.values(), index=n_estimators.keys(), columns=["n_estimators"]
-)
-df_n_estimators.to_csv(f"{output_path}n_estimators.csv")
-
-beta_estimates = pd.DataFrame(index=features, columns=["beta0"])
-beta_estimates.loc["intercept"] = z_opt
+# Create a dataframe with model parameters
+parameters = pd.DataFrame(index=features, columns=["n_estimators", "beta0"])
 for j, feature in enumerate(features):
-    beta_estimates.loc[feature] = model.beta0[j]
-beta_estimates.to_csv(f"{output_path}beta_estimates.csv")
+    parameters.loc[feature] = [n_estimators[feature], model.beta0[j]]
+parameters.to_csv(f"{output_path}parameters.csv")
+
+# Save tables and figures for the report
+logger.log("Saving tables and figures")
+from save_for_report import save_tables_and_figures
+save_tables_and_figures(run_id = run_id)
 
 logger.log("Done!")
