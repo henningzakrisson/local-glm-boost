@@ -135,6 +135,9 @@ X_test = df_test[features].astype(float)
 y_test = df_test[target]
 w_test = df_test[weights]
 
+logger.log(f"Training set size: {len(X_train)}, test set size: {len(X_test)}")
+logger.log(f"Number of features: {len(features)} ({len(continuous_features)} continuous, {len(categorical_features)} categorical)")
+
 # Tune n_estimators
 logger.log("Tuning model")
 
@@ -235,6 +238,6 @@ parameters.to_csv(f"{output_path}parameters.csv")
 # Save tables and figures for the report
 logger.log("Saving tables and figures")
 from save_for_report import save_tables_and_figures
-save_tables_and_figures(run_id = run_id)
+save_tables_and_figures(run_id = run_id, save_to_git = save_to_git)
 
 logger.log("Done!")

@@ -1,12 +1,12 @@
-n_train: 10000
+n_train: all
 features_to_use:
   - VehPower
   - VehAge
   - DrivAge
   - BonusMalus
   - Density
-  - VehGas
   - Area
+  - VehGas
   - VehBrand
   - Region
 random_seed: 14
@@ -22,11 +22,11 @@ max_depth: 2
 glm_init: true
 features: null
 
-n_estimators_max: 10
+n_estimators_max: 1000
 test_size: 0.1
 n_splits: 2
 parallel: true
 n_jobs: -1
 stratified: true
 
-save_to_git: false
+save_to_git: true

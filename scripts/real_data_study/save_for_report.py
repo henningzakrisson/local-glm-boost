@@ -4,8 +4,11 @@ import numpy as np
 import pandas as pd
 import os
 
-def save_tables_and_figures(run_id: int):
-    folder_path = f'../../data/output/run_{run_id}/'
+def save_tables_and_figures(run_id: int,save_to_git: bool):
+    if save_to_git:
+        folder_path = f'../../data/output_saved/run_{run_id}/'
+    else:
+        folder_path = f'../../data/output/run_{run_id}/'
     tex_path = folder_path + 'figures_and_tables/'
     os.makedirs(tex_path, exist_ok=True)
 
