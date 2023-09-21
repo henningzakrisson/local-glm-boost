@@ -25,7 +25,7 @@ def save_tables_and_figures(run_id: int,save_to_git: bool):
     feature_header = ["& \\rotatebox{45}{\\texttt{" + feature + "}}" for feature in cont_features + cat_features]
     kappa_table += ' '.join(feature_header) + " \\\\ \n"
 
-    kappa_row = '\\kappa_j & '
+    kappa_row = '$\\kappa_j$ & '
     cont_features_kappa = ' & '.join([str(parameters.loc[feature, 'n_estimators']) for feature in cont_features])
     kappa_row += cont_features_kappa
     for cat_feature in cat_features:
@@ -37,7 +37,7 @@ def save_tables_and_figures(run_id: int,save_to_git: bool):
     kappa_row += '\\\\ \n'
     kappa_table += kappa_row
 
-    beta_row = '\\beta_{j0} & '
+    beta_row = '$\\beta_{j0}$ & '
     cont_features_beta = ' & '.join([str(np.round(parameters.loc[feature, 'beta0'], 2)) for feature in cont_features])
     beta_row += cont_features_beta
     for cat_feature in cat_features:

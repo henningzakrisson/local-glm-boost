@@ -1,10 +1,10 @@
-import numpy as np
-import pandas as pd
 import os
 import yaml
 import shutil
 import logging
 
+import numpy as np
+import pandas as pd
 from rpy2.robjects import r
 from rpy2.rinterface_lib.callbacks import logger as rpy2_logger
 rpy2_logger.setLevel(logging.ERROR)
@@ -12,6 +12,7 @@ rpy2_logger.setLevel(logging.ERROR)
 from local_glm_boost import LocalGLMBooster
 from local_glm_boost.utils.tuning import tune_n_estimators
 from local_glm_boost.utils.logger import LocalGLMBoostLogger
+from save_for_report import save_tables_and_figures
 
 config_name = "real_data_config"
 
@@ -50,7 +51,6 @@ logger = LocalGLMBoostLogger(
 )
 logger.append_format_level(f"run_{run_id}")
 
-# Load stuff from the config
 logger.log("Loading configuration")
 n_train = config["n_train"]
 features_to_use = config["features_to_use"]
@@ -177,9 +177,7 @@ tuning_results = tune_n_estimators(
 n_estimators = tuning_results["n_estimators"]
 loss = tuning_results["loss"]
 
-# Fit models
 logger.log("Fitting models")
-# Standard model
 model = LocalGLMBooster(
     distribution="poisson",
     n_estimators=n_estimators,
@@ -202,14 +200,6 @@ loss_train.to_csv(f"{output_path}loss_tuning_train.csv")
 loss_valid.to_csv(f"{output_path}loss_tuning_valid.csv")
 
 # Crate a dataframe with all model predictions on test vs train data
-test_data = pd.DataFrame(index=y_test.index)
-test_data["y"] = y_test
-test_data["w"] = w_test
-test_data["z_0"] = np.full(len(y_test), z0)
-test_data["z_glm"] = model.z0 + (model.beta0 * X_test).sum(axis=1)
-test_data["z_local_glm_boost"] = model.predict(X_test)
-test_data.to_csv(f"{output_path}test_data.csv")
-
 train_data = pd.DataFrame(index=y_train.index)
 train_data["y"] = y_train
 train_data["w"] = w_train
@@ -217,6 +207,14 @@ train_data["z_0"] = np.full(len(y_train), z0)
 train_data["z_glm"] = model.z0 + (model.beta0 * X_train).sum(axis=1)
 train_data["z_local_glm_boost"] = model.predict(X_train)
 train_data.to_csv(f"{output_path}train_data.csv")
+
+test_data = pd.DataFrame(index=y_test.index)
+test_data["y"] = y_test
+test_data["w"] = w_test
+test_data["z_0"] = np.full(len(y_test), z0)
+test_data["z_glm"] = model.z0 + (model.beta0 * X_test).sum(axis=1)
+test_data["z_local_glm_boost"] = model.predict(X_test)
+test_data.to_csv(f"{output_path}test_data.csv")
 
 # Create a dataframe with feature importances
 feature_importances = pd.DataFrame(index=features, columns=features)
@@ -237,7 +235,6 @@ parameters.to_csv(f"{output_path}parameters.csv")
 
 # Save tables and figures for the report
 logger.log("Saving tables and figures")
-from save_for_report import save_tables_and_figures
 save_tables_and_figures(run_id = run_id, save_to_git = save_to_git)
 
 logger.log("Done!")

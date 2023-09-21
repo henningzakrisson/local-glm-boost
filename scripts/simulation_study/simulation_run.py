@@ -1,24 +1,32 @@
-config_name = "simulation_config"
-
-# Import stuff
-import yaml
 import os
+import yaml
 import shutil
+import logging
 
 import numpy as np
 import pandas as pd
+from rpy2.robjects import r
+from rpy2.rinterface_lib.callbacks import logger as rpy2_logger
+rpy2_logger.setLevel(logging.ERROR)
 
-from local_glm_boost.local_glm_boost import LocalGLMBooster
+from local_glm_boost import LocalGLMBooster
 from local_glm_boost.utils.tuning import tune_n_estimators
 from local_glm_boost.utils.logger import LocalGLMBoostLogger
+from save_for_report import save_tables_and_figures
+
+config_name = "simulation_config"
 
 # Set up output folder, configuration file, run_id and logger
 script_dir = os.path.dirname(os.path.realpath(__file__))
-folder_path = os.path.join(script_dir, "../../results/output/")
 config_path = os.path.join(script_dir, f"{config_name}.yaml")
 with open(config_path, "r") as f:
     config = yaml.load(f, Loader=yaml.FullLoader)
+folder_path = os.path.join(script_dir, "../../data/output/")
+save_to_git = config["save_to_git"]
+if save_to_git:
+    folder_path = folder_path[:-1] + "_saved/"
 
+# Find a run_id
 if os.path.exists(folder_path) and os.listdir(folder_path):
     run_id = (
         max(
@@ -30,8 +38,11 @@ if os.path.exists(folder_path) and os.listdir(folder_path):
 else:
     run_id = 0
 
-output_path = os.path.join(folder_path, f"run_{run_id}")
+output_path = os.path.join(folder_path, f"run_{run_id}/")
 os.makedirs(output_path)
+
+# Put the config in the output folder
+shutil.copyfile(config_path, f"{output_path}config.yaml")
 
 # Set up logger
 logger = LocalGLMBoostLogger(
@@ -40,60 +51,43 @@ logger = LocalGLMBoostLogger(
 )
 logger.append_format_level(f"run_{run_id}")
 
+logger.log("Loading configuration")
+distribution = config["distribution"]
+learning_rate = config["learning_rate"]
+n_estimators_max = config["n_estimators_max"]
+min_samples_split = config["min_samples_split"]
+min_samples_leaf = config["min_samples_leaf"]
+max_depth = config["max_depth"]
+glm_init = config["glm_init"]
+feature_selection = config["feature_selection"]
+n_splits = config["n_splits"]
+parallel = config["parallel"]
+n_jobs = config["n_jobs"]
+random_state = config["random_state"]
 
-# Set up simulation metadata
 logger.log("Simulating data")
-n = config["n"]
-p = config["p"]
-rng = np.random.default_rng(config["random_state"])
-cov = np.eye(p)
-correlations = config["correlations"]
-if correlations is not None:
-    for feature_1, feature_2, correlation in correlations:
-        cov[feature_1, feature_2] = correlation
-        cov[feature_2, feature_1] = correlation
-X = rng.multivariate_normal(np.zeros(p), cov, size=n)
+with open("simulate_data.R", 'r') as file:
+    r_script = file.read()
+r_script_modified = f'output_dir <- "{output_path}"\n' + r_script
+r(r_script_modified)
 
-# Evaluate beta functions on X
-betas = [eval(beta_code) for beta_code in config["beta_functions"]]
-beta = np.stack(betas, axis=1).T
+train_data = pd.read_csv(output_path+"train_data.csv")
+test_data = pd.read_csv(output_path+"test_data.csv")
 
-# Simulate
-z0 = config["z0"]
-mu = z0 + np.sum(beta.T * X, axis=1)
-y = rng.normal(mu, 1)
+X_train = train_data.drop(columns=["Y","mu"])
+y_train = train_data["Y"]
+mu_train = train_data["mu"]
 
-# Train test split
-idx = np.arange(n)
-rng.shuffle(idx)
-idx_train, idx_test = (
-    idx[: int((1 - config["test_size"]) * n)],
-    idx[int(config["test_size"] * n) :],
-)
-X_train, y_train, mu_train, beta_train = (
-    X[idx_train],
-    y[idx_train],
-    mu[idx_train],
-    beta[:, idx_train],
-)
-X_test, y_test, mu_test, beta_test = (
-    X[idx_test],
-    y[idx_test],
-    mu[idx_test],
-    beta[:, idx_test],
-)
+X_test = test_data.drop(columns=["Y","mu"])
+y_test = test_data["Y"]
+mu_test = test_data["mu"]
+
+features = X_train.columns
+
+rng = np.random.default_rng(random_state)
 
 # Tune n_estimators
 logger.log("Tuning model")
-max_depth = config["max_depth"]
-min_samples_leaf = config["min_samples_leaf"]
-distribution = config["distribution"]
-n_estimators_max = config["n_estimators_max"]
-learning_rate = config["learning_rate"]
-n_splits = config["n_splits"]
-glm_init = config["glm_init"]
-feature_selection = config["feature_selection"]
-
 model = LocalGLMBooster(
     n_estimators=0,
     learning_rate=learning_rate,
@@ -111,12 +105,12 @@ tuning_results = tune_n_estimators(
     n_splits=n_splits,
     rng=rng,
     logger=logger,
-    parallel=config["parallel"],
-    n_jobs=config["n_jobs"],
+    parallel=parallel,
+    n_jobs=n_jobs,
 )
 n_estimators = tuning_results["n_estimators"]
+loss = tuning_results["loss"]
 
-# Evaluate performance
 logger.log("Fitting models")
 model = LocalGLMBooster(
     n_estimators=n_estimators,
@@ -127,71 +121,55 @@ model = LocalGLMBooster(
     glm_init=glm_init,
 )
 model.fit(X=X_train, y=y_train)
-feature_importance = pd.DataFrame(
-    index=[j for j in range(p) if n_estimators[j] > 0], columns=range(p), dtype=float
-)
-for j in feature_importance.index:
-    feature_importance.loc[j] = model.compute_feature_importances(feature=j, normalize=True)
 
-beta_hat = {
-    "true": pd.DataFrame(beta_test),
-    "local_glm_boost": pd.DataFrame(model.predict_parameter(X_test)),
-}
+# Intercept model
+z0 = y_train.mean()
 
-mu_hat = pd.DataFrame(
-    columns=["true", "intercept", "glm", "local_glm_boost"],
-)
-mu_hat["true"] = mu_test
-mu_hat["intercept"] = y_train.mean() * np.ones(len(y_test))
-mu_hat["glm"] = model.z0 + model.beta0.reshape(p) @ X_test.T
-mu_hat["local_glm_boost"] = model.predict(X_test)
+# Summarize output
+logger.log("Summarizing output")
 
-results = pd.DataFrame(
-    index=["true", "intercept", "glm", "local_glm_boost"],
-    columns=["Training MSE", "Test MSE"],
-    dtype=float,
-)
-results.loc["true"] = [
-    np.mean((mu_train - y_train) ** 2),
-    np.mean((mu_test - y_test) ** 2),
-]
-results.loc["intercept"] = [
-    np.mean((y_train.mean() - y_train) ** 2),
-    np.mean((y_train.mean() - y_test) ** 2),
-]
-results.loc["glm"] = [
-    np.mean((model.z0 + model.beta0.reshape(p) @ X_train.T - y_train) ** 2),
-    np.mean((model.z0 + model.beta0.reshape(p) @ X_test.T - y_test) ** 2),
-]
-results.loc["local_glm_boost"] = [
-    np.mean((model.predict(X_train) - y_train) ** 2),
-    np.mean((model.predict(X_test) - y_test) ** 2),
-]
+# Save the total CV losses
+loss_train = pd.DataFrame(data=np.sum(loss["train"], axis=0), columns=features)
+loss_valid = pd.DataFrame(data=np.sum(loss["valid"], axis=0), columns=features)
+loss_train.to_csv(f"{output_path}loss_tuning_train.csv")
+loss_valid.to_csv(f"{output_path}loss_tuning_valid.csv")
 
+# Crate a dataframe with all model predictions on test vs train data
+train_data = pd.DataFrame(index=y_train.index)
+train_data["y"] = y_train
+train_data["mu"] = mu_train
+train_data["z_0"] = np.full(len(y_train), z0)
+train_data["z_glm"] = model.z0 + (model.beta0 * X_train).sum(axis=1)
+train_data["z_local_glm_boost"] = model.predict(X_train)
+train_data.to_csv(f"{output_path}train_data.csv")
 
-# Save output
-shutil.copyfile(config_path, f"{output_path}/config.yaml")
+test_data = pd.DataFrame(index=y_test.index)
+test_data["y"] = y_test
+test_data["mu"] = mu_test
+test_data["z_0"] = np.full(len(y_test), z0)
+test_data["z_glm"] = model.z0 + (model.beta0 * X_test).sum(axis=1)
+test_data["z_local_glm_boost"] = model.predict(X_test)
+test_data.to_csv(f"{output_path}test_data.csv")
 
-logger.log("Saving output...")
-results.to_csv(f"{output_path}/MSE.csv")
-for data_set in ["train", "valid"]:
-    pd.DataFrame(np.sum(tuning_results["loss"][data_set], axis=0)).to_csv(
-        f"{output_path}/tuning_loss_{data_set}.csv"
-    )
+# Create a dataframe with feature importances
+feature_importances = pd.DataFrame(index=features, columns=features)
+for feature in features:
+    if n_estimators[feature] != 0:
+        feature_importances.loc[feature] = model.compute_feature_importances(
+            feature, normalize=False
+        )
+    else:
+        feature_importances.loc[feature] = 0
+feature_importances.to_csv(f"{output_path}feature_importances.csv")
 
-pd.DataFrame(n_estimators).to_csv(f"{output_path}/n_estimators.csv")
-beta0 = pd.DataFrame(columns=["local_glm_boost", "local_glm_boost_light"])
-beta0["local_glm_boost"] = model.beta0
-beta0.to_csv(f"{output_path}/beta0.csv")
+# Create a dataframe with model parameters
+parameters = pd.DataFrame(index=features, columns=["n_estimators", "beta0"])
+for j, feature in enumerate(features):
+    parameters.loc[feature] = [n_estimators[feature], model.beta0[j]]
+parameters.to_csv(f"{output_path}parameters.csv")
 
-feature_importance.index = [f"beta_{j}" for j in feature_importance.index]
-feature_importance.columns = [f"x_{j}" for j in feature_importance.columns]
-feature_importance.to_csv(f"{output_path}/feature_importance.csv")
+# Save tables and figures for the report
+logger.log("Saving tables and figures")
+save_tables_and_figures(run_id = run_id, save_to_git = save_to_git)
 
-mu_hat.to_csv(f"{output_path}/mu_hat.csv")
-
-os.makedirs(f"{output_path}/beta_hat", exist_ok=True)
-for model_name in beta_hat.keys():
-    beta_hat[model_name].to_csv(f"{output_path}/beta_hat/{model_name}.csv")
-
-logger.log_finish()
+logger.log("Done!")
