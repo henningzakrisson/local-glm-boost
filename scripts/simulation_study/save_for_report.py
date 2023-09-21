@@ -62,7 +62,7 @@ def save_tables_and_figures(run_id: int,save_to_git: bool):
     mse_table.loc['LocalGLMNet', 'Train'] = 1.0023
     mse_table.loc['LocalGLMNet', 'Test'] = 1.0047
 
-    mse_table.round(5).to_latex(tex_path + 'simulated_data_mse.tex')
+    mse_table.round(4).to_latex(tex_path + 'simulated_data_mse.tex')
 
     feature_importances = pd.read_csv(folder_path + 'feature_importances.csv', index_col=0)
 
