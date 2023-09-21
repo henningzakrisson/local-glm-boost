@@ -33,7 +33,7 @@ class LocalGLMBoosterTestCase(unittest.TestCase):
         self,
     ):
         """
-        Test the loss results on a normal distribution
+        Test the loss output on a normal distribution
         """
         y = self.rng.normal(self.z, 1)
         model = LocalGLMBooster(
@@ -55,7 +55,7 @@ class LocalGLMBoosterTestCase(unittest.TestCase):
         self,
     ):
         """
-        Test the loss results on a gamma distribution
+        Test the loss output on a gamma distribution
         """
         y = self.rng.gamma(1, np.exp(0.1 * self.z))
         model = LocalGLMBooster(
@@ -77,7 +77,7 @@ class LocalGLMBoosterTestCase(unittest.TestCase):
         self,
     ):
         """
-        Test the loss results on a Poisson distribution
+        Test the loss output on a Poisson distribution
         """
         y = self.rng.poisson(np.exp(0.1 * self.z))
         model = LocalGLMBooster(
@@ -99,7 +99,7 @@ class LocalGLMBoosterTestCase(unittest.TestCase):
         self,
     ):
         """
-        Test the loss results on a normal distribution with duration weights
+        Test the loss output on a normal distribution with duration weights
         """
         y = self.rng.normal(self.w * self.z, 1)
         model = LocalGLMBooster(
@@ -121,7 +121,7 @@ class LocalGLMBoosterTestCase(unittest.TestCase):
         self,
     ):
         """
-        Test the loss results on a gamma distribution with duration weights
+        Test the loss output on a gamma distribution with duration weights
         """
         y = self.rng.gamma(self.w, np.exp(0.1 * self.z))
         model = LocalGLMBooster(
@@ -143,7 +143,7 @@ class LocalGLMBoosterTestCase(unittest.TestCase):
         self,
     ):
         """
-        Test the loss results on a Poisson distribution with duration weights
+        Test the loss output on a Poisson distribution with duration weights
         """
         y = self.rng.poisson(self.w * np.exp(0.1 * self.z))
         model = LocalGLMBooster(
@@ -376,7 +376,7 @@ class LocalGLMBoosterTestCase(unittest.TestCase):
         self,
     ):
         """
-        Test the loss results on a normal distribution
+        Test the loss output on a normal distribution
         """
         n = 1000
         p = 5
@@ -423,7 +423,7 @@ class LocalGLMBoosterTestCase(unittest.TestCase):
         self,
     ):
         """
-        Test the tuning results when fitting in parallel
+        Test the tuning output when fitting in parallel
         """
         n = 1000
         p = 5
