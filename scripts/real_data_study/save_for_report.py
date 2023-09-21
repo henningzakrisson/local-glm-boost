@@ -99,20 +99,18 @@ def save_tables_and_figures(run_id: int,save_to_git: bool):
     # Save as tex
     tikzplotlib.save(tex_path + 'real_data_predictions.tex');
 
-    feature_importances_og = pd.read_csv(folder_path + 'feature_importances.csv', index_col=0)
-    feature_importances = feature_importances_og.copy().fillna(0)
+    feature_importances = pd.read_csv(folder_path + 'feature_importances.csv', index_col=0)
 
-    # Sum importance for categorical features
+    cat_features = ['VehGas', 'VehBrand', 'Region']
     for cat_feature in cat_features:
-        dummy_features = [feature for feature in feature_importances.index if feature.startswith(cat_feature)]
-        feature_importances.loc[cat_feature] = feature_importances.loc[dummy_features].sum(axis=0)
-        feature_importances.drop(dummy_features, axis=0, inplace=True)
-
+        dummy_features = [col for col in feature_importances.index if cat_feature in col]
         feature_importances[cat_feature] = feature_importances[dummy_features].sum(axis=1)
+        feature_importances.loc[cat_feature] = feature_importances.loc[dummy_features].sum(axis=0)
+
+        feature_importances.drop(dummy_features, axis=0, inplace=True)
         feature_importances.drop(dummy_features, axis=1, inplace=True)
 
-    # Normalize
-    feature_importances = feature_importances.div(feature_importances.sum(axis=0), axis=1).fillna(0)
+    feature_importances = feature_importances.div(feature_importances.sum(axis=1), axis=0).fillna(0)
 
     # Create a latex heatmap figure
     feature_heatmap = """\\begin{tikzpicture}
@@ -138,21 +136,21 @@ def save_tables_and_figures(run_id: int,save_to_git: bool):
         point meta=explicit,
         y dir=reverse
     ]
-    \addplot [
-    matrix plot*,"""
+    \\addplot [
+    matrix plot*, \n"""
 
-    mesh_col_line = f"    mesh/cols={len(feature_importances.columns)},"
+    mesh_col_line = f"    mesh/cols={len(feature_importances.columns)}, \n"
     feature_heatmap += mesh_col_line
-    mesh_row_line = f"    mesh/rows={len(feature_importances.index)},"
+    mesh_row_line = f"    mesh/rows={len(feature_importances.index)}, \n"
     feature_heatmap += mesh_row_line
 
     feature_heatmap += """]
     table [meta=value] {
     X Y value"""
 
-    for j, feature in enumerate(feature_importances.columns):
-        for i, value in enumerate(feature_importances[feature]):
-            feature_heatmap += f"\n{j} {i} {np.round(value, 4)}"
+    for j, feature in enumerate(feature_importances.index):
+        for i, value in enumerate(feature_importances.loc[feature]):
+            feature_heatmap += f"\n{i} {j} {np.round(value, 4)}"
         feature_heatmap += "\n"
 
     feature_heatmap += """
