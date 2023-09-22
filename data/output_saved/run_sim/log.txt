@@ -1,0 +1,8 @@
+[2023-09-21 14:55][run_53][Loading configuration]
+[2023-09-21 14:55][run_53][Simulating data]
+[2023-09-21 14:55][run_53][Tuning model]
+[2023-09-21 14:55][run_53][performing cross-validation on 2 folds]
+[2023-09-21 15:08][run_53][Fitting models]
+[2023-09-21 15:15][run_53][Summarizing output]
+[2023-09-21 15:15][run_53][Saving tables and figures]
+[2023-09-21 15:15][run_53][Done!]
