@@ -29,3 +29,6 @@ if(!dir.exists(output_dir)) {
 }
 write.csv(learn, file.path(output_dir, "train_data.csv"))
 write.csv(test, file.path(output_dir, "test_data.csv"))
+
+# Step 6: Delete the .rda file
+file.remove(destfile)
