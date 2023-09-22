@@ -131,10 +131,10 @@ class LocalGLMBooster:
             for js in parallel_fit:
                 new_trees = Parallel(n_jobs=-1)(
                     delayed(self.fit_tree)(
-                        X=X,
-                        y=y,
-                        z=z,
-                        w=w,
+                        X=X[X[:,j] != 0],
+                        y=y[X[:,j] != 0],
+                        z=z[X[:,j] != 0],
+                        w=w[X[:,j] != 0],
                         j=j,
                     )
                     for j in js
