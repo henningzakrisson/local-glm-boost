@@ -28,13 +28,15 @@ if save_to_git:
 
 # Find a run_id
 if os.path.exists(folder_path) and os.listdir(folder_path):
-    run_id = (
-        max(
-            [int(folder_name.split("_")[1]) for folder_name in os.listdir(folder_path)]
-            + [0]
-        )
-        + 1
-    )
+    run_ids = []
+    for folder_name in os.listdir(folder_path):
+        try:
+            prefix, run_number = folder_name.split("_", 1)  # Split by the first underscore
+            if prefix == "run" and run_number.isdigit():  # Check if prefix is "run" and run_number is a digit
+                run_ids.append(int(run_number))
+        except ValueError:
+            continue  # Skip to the next folder_name if it can't be split into two parts
+    run_id = max(run_ids + [0]) + 1
 else:
     run_id = 0
 
