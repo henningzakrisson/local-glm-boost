@@ -12,4 +12,4 @@ random_state: 14
 parallel: true
 n_jobs: -1
 
-save_to_git: false
+save_to_git: true
