@@ -17,4 +17,6 @@ venv/
 /notebooks/
 /data/output
 /data/input
+.DS_Store
+```
 
