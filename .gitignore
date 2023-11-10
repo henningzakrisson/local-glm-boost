@@ -15,8 +15,7 @@ MANIFEST
 venv/
 .idea/
 /notebooks/
-/data/output
-/data/input
+/data/
 .DS_Store
 ```
 
