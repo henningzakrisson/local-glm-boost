@@ -1,3 +1,6 @@
 numpy
 scikit_learn
 scipy
+joblib
+matplotlib
+tikzplotlib
