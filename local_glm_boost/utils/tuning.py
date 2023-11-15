@@ -11,9 +11,9 @@ from .logger import LocalGLMBoostLogger
 
 
 def tune_n_estimators(
-    X: np.ndarray,
-    y: np.ndarray,
-    w: Optional[np.ndarray] = None,
+    X: Union[pd.DataFrame, np.ndarray],
+    y: Union[pd.Series, np.ndarray],
+    w: Optional[Union[pd.Series, np.ndarray]] = None,
     model: LocalGLMBooster = LocalGLMBooster(),
     n_estimators_max: Union[int, List[int]] = 1000,
     n_splits: int = 4,
@@ -291,11 +291,12 @@ def _find_n_estimators(
     loss_delta[1:, 1:] = loss[1:, 1:] - loss[1:, :-1]
 
     n_estimators = np.maximum(0, np.argmax(loss_delta[1:] > 0, axis=0))
-    did_not_converge = (loss_delta > 0).sum(axis=0) == 0
+    did_not_converge = np.logical_and((loss_delta > 0).sum(axis=0) == 0, [n_estimator_max > 0 for n_estimator_max in n_estimators_max])
     n_estimators[did_not_converge] = np.array(n_estimators_max)[did_not_converge]
     if np.any(did_not_converge):
+        # Log a list of the dimensions that did not converge
+        non_converged_dimensions = ', '.join(map(str, np.where(did_not_converge)[0]))
         logger.log(
-            f"tuning did not converge for dimensions {np.where(did_not_converge)}",
-            verbose=1,
+            f"Tuning did not converge for the following dimensions: {non_converged_dimensions}"
         )
     return list(n_estimators)

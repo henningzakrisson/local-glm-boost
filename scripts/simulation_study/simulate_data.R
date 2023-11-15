@@ -7,8 +7,6 @@ regression <- function(seed, N0){
     dat
 }
 
-N0 <- 100000
-
 # Saving dataframes to .csv files
-write.csv(regression(100, N0), file.path(output_dir, "train_data.csv"), row.names = FALSE)
-write.csv(regression(200, N0), file.path(output_dir, "test_data.csv"), row.names = FALSE)
+write.csv(regression(100, N), file.path(output_dir, "train_data.csv"), row.names = FALSE)
+write.csv(regression(200, N), file.path(output_dir, "test_data.csv"), row.names = FALSE)

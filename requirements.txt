@@ -2,3 +2,6 @@ numpy
 scikit_learn
 scipy
 joblib
+pandas
+PyYAML
+rpy2

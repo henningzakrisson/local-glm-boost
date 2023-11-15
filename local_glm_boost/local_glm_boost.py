@@ -88,9 +88,9 @@ class LocalGLMBooster:
 
     def fit(
         self,
-        X: np.ndarray,
-        y: np.ndarray,
-        w: Optional[np.ndarray] = None,
+        X: Union[np.ndarray, pd.DataFrame],
+        y: Union[np.ndarray, pd.Series],
+        w: Optional[Union[np.ndarray, pd.Series]] = None,
         parallel_fit: Optional[List[List[int]]] = None,
     ):
         """
