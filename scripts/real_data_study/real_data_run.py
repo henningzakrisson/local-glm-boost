@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 from rpy2.robjects import r
 from rpy2.rinterface_lib.callbacks import logger as rpy2_logger
+
 rpy2_logger.setLevel(logging.ERROR)
 
 from local_glm_boost import LocalGLMBooster
@@ -31,8 +32,12 @@ if os.path.exists(folder_path) and os.listdir(folder_path):
     run_ids = []
     for folder_name in os.listdir(folder_path):
         try:
-            prefix, run_number = folder_name.split("_", 1)  # Split by the first underscore
-            if prefix == "run" and run_number.isdigit():  # Check if prefix is "run" and run_number is a digit
+            prefix, run_number = folder_name.split(
+                "_", 1
+            )  # Split by the first underscore
+            if (
+                prefix == "run" and run_number.isdigit()
+            ):  # Check if prefix is "run" and run_number is a digit
                 run_ids.append(int(run_number))
         except ValueError:
             continue  # Skip to the next folder_name if it can't be split into two parts
@@ -74,13 +79,13 @@ n_jobs = config["n_jobs"]
 
 # Load and preprocess data
 logger.log("Loading data")
-with open('load_data.R', 'r') as file:
+with open("load_data.R", "r") as file:
     r_script = file.read()
 r_script_modified = f'output_dir <- "{output_path}"\n' + r_script
 r(r_script_modified)
 
-df_train = pd.read_csv(output_path + 'train_data.csv', index_col=0)
-df_test = pd.read_csv(output_path + 'test_data.csv', index_col=0)
+df_train = pd.read_csv(output_path + "train_data.csv", index_col=0)
+df_test = pd.read_csv(output_path + "test_data.csv", index_col=0)
 
 df_train["train"] = 1
 df_test["train"] = 0
@@ -127,7 +132,7 @@ df_test = df.loc[df["train"] == 0]
 rng = np.random.default_rng(seed=random_seed)
 if n_train != "all":
     df_train = df_train.sample(n_train, random_state=rng.integers(0, 10000))
-n = len(df_train)+len(df_test)
+n = len(df_train) + len(df_test)
 
 X_train = df_train[features].astype(float)
 y_train = df_train[target]
@@ -138,7 +143,9 @@ y_test = df_test[target]
 w_test = df_test[weights]
 
 logger.log(f"Training set size: {len(X_train)}, test set size: {len(X_test)}")
-logger.log(f"Number of features: {len(features)} ({len(continuous_features)} continuous, {len(categorical_features)} categorical)")
+logger.log(
+    f"Number of features: {len(features)} ({len(continuous_features)} continuous, {len(categorical_features)} categorical)"
+)
 
 # Tune n_estimators
 logger.log("Tuning model")
@@ -237,6 +244,6 @@ parameters.to_csv(f"{output_path}parameters.csv")
 
 # Save tables and figures for the report
 logger.log("Saving tables and figures")
-save_tables_and_figures(run_id = run_id, save_to_git = save_to_git)
+save_tables_and_figures(run_id=run_id, save_to_git=save_to_git)
 
 logger.log("Done!")

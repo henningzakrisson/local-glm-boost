@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 from scipy.optimize import minimize
 
-from .utils.distributions import initiate_distribution
+from .utils.distributions import initiate_distribution, Distribution
 from .utils.fix_data import fix_data
 from .utils.hyperparameters import HyperparameterDict, FeatureSelectionDict
 from .boosting_tree import BoostingTree
@@ -22,7 +22,7 @@ FeatureSelection = Union[
 class LocalGLMBooster:
     def __init__(
         self,
-        distribution: str = "normal",
+        distribution: Union[str, Distribution] = "normal",
         n_estimators: Hyperparameter[int] = 100,
         learning_rate: Hyperparameter[float] = 0.1,
         min_samples_split: Hyperparameter[int] = 2,
@@ -43,7 +43,10 @@ class LocalGLMBooster:
         :param glm_init: Whether to initialize the model with a GLM fit.
         :param feature_selection: Features to use for each coefficient. A dictionary with the coefficient name or number as key and a list of feature names or numbers as value.
         """
-        self.distribution = initiate_distribution(distribution)
+        if isinstance(distribution, str):
+            self.distribution = initiate_distribution(distribution)
+        else:
+            self.distribution = distribution
 
         self.n_estimators = n_estimators
         self.learning_rate = learning_rate
@@ -88,9 +91,9 @@ class LocalGLMBooster:
 
     def fit(
         self,
-        X: np.ndarray,
-        y: np.ndarray,
-        w: Optional[np.ndarray] = None,
+        X: Union[np.ndarray, pd.DataFrame],
+        y: Union[np.ndarray, pd.Series],
+        w: Optional[Union[np.ndarray, pd.Series]] = None,
         parallel_fit: Optional[List[List[int]]] = None,
     ):
         """
@@ -236,17 +239,20 @@ class LocalGLMBooster:
         :param X: Input data matrix of shape (n, p).
         :return: Predicted parameter values for the input data of shape (n, p).
         """
-        return np.tile(self.beta0, (X.shape[0], 1)).T + np.array(
+        X_fixed = fix_data(X=X, feature_names=self.feature_names)
+        return np.tile(self.beta0, (X_fixed.shape[0], 1)).T + np.array(
             [
                 sum(
                     [
                         self.learning_rate[j]
-                        * self.trees[j][k].predict(X[:, self.feature_selection[j]])
+                        * self.trees[j][k].predict(
+                            X_fixed[:, self.feature_selection[j]]
+                        )
                         for k in range(self.n_estimators[j])
                     ]
                 )
                 if self.n_estimators[j] > 0
-                else np.zeros(X.shape[0])
+                else np.zeros(X_fixed.shape[0])
                 for j in range(self.p)
             ]
         )

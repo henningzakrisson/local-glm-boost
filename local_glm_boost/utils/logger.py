@@ -2,6 +2,8 @@ import logging
 from typing import Optional
 import os
 import time
+from pathlib import Path
+from typing import Union
 
 import numpy as np
 
@@ -12,7 +14,7 @@ class LocalGLMBoostLogger:
     def __init__(
         self,
         verbose: int = 0,
-        output_path: Optional[str] = None,
+        output_path: Optional[Union[Path, str]] = None,
     ):
         """Initialize the logger.
 
