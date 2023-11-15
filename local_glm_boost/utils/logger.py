@@ -14,7 +14,7 @@ class LocalGLMBoostLogger:
     def __init__(
         self,
         verbose: int = 0,
-        output_path: Optional[Union[Path,str]] = None,
+        output_path: Optional[Union[Path, str]] = None,
     ):
         """Initialize the logger.
 

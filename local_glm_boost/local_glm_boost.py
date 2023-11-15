@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 from scipy.optimize import minimize
 
-from .utils.distributions import initiate_distribution,Distribution
+from .utils.distributions import initiate_distribution, Distribution
 from .utils.fix_data import fix_data
 from .utils.hyperparameters import HyperparameterDict, FeatureSelectionDict
 from .boosting_tree import BoostingTree
@@ -22,7 +22,7 @@ FeatureSelection = Union[
 class LocalGLMBooster:
     def __init__(
         self,
-        distribution: Union[str,Distribution] = "normal",
+        distribution: Union[str, Distribution] = "normal",
         n_estimators: Hyperparameter[int] = 100,
         learning_rate: Hyperparameter[float] = 0.1,
         min_samples_split: Hyperparameter[int] = 2,
@@ -245,7 +245,9 @@ class LocalGLMBooster:
                 sum(
                     [
                         self.learning_rate[j]
-                        * self.trees[j][k].predict(X_fixed[:, self.feature_selection[j]])
+                        * self.trees[j][k].predict(
+                            X_fixed[:, self.feature_selection[j]]
+                        )
                         for k in range(self.n_estimators[j])
                     ]
                 )
