@@ -5,3 +5,4 @@ joblib
 pandas
 PyYAML
 rpy2
+statsmodels

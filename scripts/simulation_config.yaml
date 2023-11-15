@@ -1,3 +1,5 @@
+data_source: simulation
+
 n: 1000
 learning_rate: 0.01
 n_estimators_max: 10
