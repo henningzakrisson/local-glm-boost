@@ -51,8 +51,7 @@ def setup_output_folder():
     return output_path, run_id
 
 
-def simulate_data(n, output_path, logger):
-    logger.log("Simulating data")
+def simulate_data(n, output_path):
     with open(f"{script_dir}/simulate_data.R", "r") as file:
         r_script = file.read()
     # Add number of data points and output path to R script
@@ -64,6 +63,94 @@ def simulate_data(n, output_path, logger):
     test_data = pd.read_csv(f"{output_path}/test_data.csv")
     train_data["w"] = 1
     test_data["w"] = 1
+
+    return train_data, test_data
+
+
+def process_data(train_data, test_data, n, rng):
+    if n != "all":
+        train_data = train_data.sample(n, random_state=rng.integers(0, 10000))
+
+    train_data["train"] = 1
+    test_data["train"] = 0
+    data = pd.concat([train_data, test_data], axis=0)
+    data["mu"] = np.nan
+
+    data.set_index("IDpol", inplace=True)
+    data.rename(
+        columns={
+            "Exposure": "w",
+            "ClaimNb": "y",
+        },
+        inplace=True,
+    )
+    data.drop(columns=["ClaimTotal", "Unnamed: 0"], inplace=True)
+
+    continuous_features = [
+        "VehPower",
+        "VehAge",
+        "DrivAge",
+        "BonusMalus",
+        "Density",
+        "Area",
+    ]
+    categorical_features = [
+        "VehBrand",
+        "Region",
+        "VehGas",
+    ]
+    features = []  # Finished features
+    parallel_fit = []  # Features to fit in parallel
+
+    # Concatenate dataframes for ease of processing
+    train_data["train"] = 1
+    test_data["train"] = 0
+    data = pd.concat([train_data, test_data], axis=0)
+
+    # Preprocess area
+    data["Area"] = data["Area"].apply(lambda x: ord(x) - 65)
+    features.append("Area")
+
+    # Normalize categorical features
+    for feature in continuous_features:
+        feature_max = data.loc[data["train"] == 1, feature].max()
+        data[feature] = train_data[feature] / feature_max
+        data[feature] = test_data[feature] / feature_max
+        features.append(feature)
+
+    # One-hot encode categorical features
+    for feature in categorical_features:
+        dummies = pd.get_dummies(data[feature], prefix=feature)
+        data = pd.concat([data, dummies], axis=1)
+        data.drop(columns=[feature], inplace=True)
+        dummy_feature_indices = [
+            j for j in range(len(features), len(features) + len(dummies.columns))
+        ]
+        parallel_fit.append(dummy_feature_indices)
+        features += dummies.columns.tolist()
+
+    # Re-split
+    train_data = data.loc[data["train"] == 1, features + ["y", "w", "mu"]]
+    test_data = data.loc[data["train"] == 0, features + ["y", "w", "mu"]]
+    return train_data, test_data, features, parallel_fit
+
+
+def load_data(n, output_path, rng):
+    with open(f"{script_dir}/load_data.R", "r") as file:
+        r_script = file.read()
+    # Add output path to R script
+    r_script = f'output_dir <- "{output_path}"\n' + r_script
+    r(r_script)
+
+    train_data, test_data, features, parallel_fit = process_data(
+        train_data=pd.read_csv(f"{output_path}/train_data.csv"),
+        test_data=pd.read_csv(f"{output_path}/test_data.csv"),
+        n=n,
+        rng=rng,
+    )
+    # TODO: Move this save to end of file
+    train_data.to_csv(f"{output_path}/train_data.csv")
+    test_data.to_csv(f"{output_path}/test_data.csv")
 
     return train_data, test_data
 
@@ -262,6 +349,12 @@ def save_model_parameters(models, features):
 def calculate_loss_results(train_data, test_data, distribution):
     loss_table = pd.DataFrame(columns=["train", "test"])
     for data_label, data in zip(["train", "test"], [train_data, test_data]):
+        if "mu" in data.columns:
+            # TODO: Make this more general (i.e. different links)
+            loss_table.loc["True", data_label] = distribution.loss(
+                y=data["y"], z=data["mu"] / data["w"], w=data["w"]
+            ).mean()
+
         for model in ["Intercept", "GLM", "GBM", "LocalGLMboost"]:
             loss_table.loc[model, data_label] = distribution.loss(
                 y=data["y"], z=data[f"mu_{model}"], w=data["w"]
@@ -292,9 +385,12 @@ def main(config_path):
     # Load data
     if config["data_source"] == "simulation":
         logger.log("Simulating data")
-        train_data, test_data = simulate_data(config["n"], output_path, logger)
+        train_data, test_data = simulate_data(config["n"], output_path)
         distribution = initiate_distribution(distribution="normal")
         link = lambda z: z
+    elif config["data_source"] == "real":
+        logger.log("Loading data")
+        load_data(config["n"], output_path, rng=rng)
     else:
         raise ValueError("Data source not recognized")
 
