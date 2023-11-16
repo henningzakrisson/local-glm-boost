@@ -55,7 +55,7 @@ def simulate_data(n, output_path):
     with open(f"{script_dir}/simulate_data.R", "r") as file:
         r_script = file.read()
     # Add number of data points and output path to R script
-    r_script = f"N <- {n}\n" + r_script
+    r_script = f"N <- {int(np.floor(n/2))}\n" + r_script
     r_script = f'output_dir <- "{output_path}"\n' + r_script
     r(r_script)
 
@@ -64,7 +64,10 @@ def simulate_data(n, output_path):
     train_data["w"] = 1
     test_data["w"] = 1
 
-    return train_data, test_data
+    features = [col for col in train_data.columns if col not in ["y", "w", "z", "mu"]]
+    parallel_fit = []
+
+    return train_data, test_data, features, parallel_fit
 
 
 def process_data(train_data, test_data, n, rng):
@@ -74,7 +77,7 @@ def process_data(train_data, test_data, n, rng):
     train_data["train"] = 1
     test_data["train"] = 0
     data = pd.concat([train_data, test_data], axis=0)
-    data["mu"] = np.nan
+    data["z"] = np.nan
 
     data.set_index("IDpol", inplace=True)
     data.rename(
@@ -109,13 +112,12 @@ def process_data(train_data, test_data, n, rng):
 
     # Preprocess area
     data["Area"] = data["Area"].apply(lambda x: ord(x) - 65)
-    features.append("Area")
 
     # Normalize categorical features
     for feature in continuous_features:
         feature_max = data.loc[data["train"] == 1, feature].max()
-        data[feature] = train_data[feature] / feature_max
-        data[feature] = test_data[feature] / feature_max
+        data[feature] = data[feature] / feature_max
+        data[feature] = data[feature] / feature_max
         features.append(feature)
 
     # One-hot encode categorical features
@@ -129,9 +131,18 @@ def process_data(train_data, test_data, n, rng):
         parallel_fit.append(dummy_feature_indices)
         features += dummies.columns.tolist()
 
+    data.rename(
+        columns={
+            "ClaimNb": "y",
+            "Exposure": "w",
+        },
+        inplace=True,
+    )
+    data["z"] = np.nan
+
     # Re-split
-    train_data = data.loc[data["train"] == 1, features + ["y", "w", "mu"]]
-    test_data = data.loc[data["train"] == 0, features + ["y", "w", "mu"]]
+    train_data = data.loc[data["train"] == 1, features + ["y", "w", "z"]]
+    test_data = data.loc[data["train"] == 0, features + ["y", "w", "z"]]
     return train_data, test_data, features, parallel_fit
 
 
@@ -148,23 +159,27 @@ def load_data(n, output_path, rng):
         n=n,
         rng=rng,
     )
-    # TODO: Move this save to end of file
-    train_data.to_csv(f"{output_path}/train_data.csv")
-    test_data.to_csv(f"{output_path}/test_data.csv")
 
-    return train_data, test_data
+    return train_data, test_data, features, parallel_fit
+
+
+# Calculate deviance
+def poisson_deviance(y, w, z):
+    log_y = np.zeros(len(y))
+    log_y[y > 0] = np.log(y[y > 0])
+    dev = w * np.exp(z) + y * (log_y - np.log(w) - z - 1)
+    return 2 * dev
 
 
 def extract_data(df):
-    X = df.drop(columns=["y", "mu", "w"], errors="ignore")
-    y = df["y"]
-    mu = df["mu"]
-    w = df["w"]
-    return X, y, mu, w
+    X = df.drop(columns=["y", "z", "w"], errors="ignore").astype(float)
+    y = df["y"].astype(float)
+    w = df["w"].astype(float)
+    return X, y, w
 
 
 def fit_intercept(data, distribution):
-    X, y, mu, w = extract_data(data)
+    X, y, w = extract_data(data)
     intercept = LocalGLMBooster(
         n_estimators=0,
         distribution=distribution,
@@ -175,7 +190,7 @@ def fit_intercept(data, distribution):
 
 
 def fit_glm(data, distribution):
-    X, y, mu, w = extract_data(data)
+    X, y, w = extract_data(data)
     glm = LocalGLMBooster(
         n_estimators=0,
         distribution=distribution,
@@ -185,8 +200,8 @@ def fit_glm(data, distribution):
     return glm
 
 
-def fit_gbm(data, distribution, config, rng, logger):
-    X, y, mu, w = extract_data(data)
+def fit_gbm(data, distribution, config, rng, logger, stratified):
+    X, y, w = extract_data(data)
     model_standard = LocalGLMBooster(
         distribution=distribution,
         n_estimators=0,
@@ -207,6 +222,7 @@ def fit_gbm(data, distribution, config, rng, logger):
         parallel=config["parallel"],
         n_jobs=config["n_jobs"],
         logger=logger,
+        stratified=stratified,
     )
     n_estimators = tuning_results_gbm["n_estimators"]
     tuning_loss = tuning_results_gbm["loss"]
@@ -224,16 +240,17 @@ def fit_gbm(data, distribution, config, rng, logger):
     return gbm, n_estimators, tuning_loss
 
 
-def fit_local_glm_boost(data, distribution, config, rng, logger):
-    X, y, mu, w = extract_data(data)
+def fit_local_glm_boost(
+    data, distribution, config, rng, logger, stratified, parallel_fit
+):
+    X, y, w = extract_data(data)
     local_glm_boost = LocalGLMBooster(
         n_estimators=0,
         learning_rate=config["learning_rate"],
         max_depth=config["max_depth"],
         min_samples_leaf=config["min_samples_leaf"],
         distribution=distribution,
-        glm_init=config["glm_init"],
-        feature_selection=config["feature_selection"],
+        glm_init=True,
     )
     tuning_results = tune_n_estimators(
         X=X,
@@ -246,20 +263,21 @@ def fit_local_glm_boost(data, distribution, config, rng, logger):
         logger=logger,
         parallel=config["parallel"],
         n_jobs=config["n_jobs"],
+        stratified=stratified,
+        parallel_fit=parallel_fit,
     )
     n_estimators = tuning_results["n_estimators"]
     tuning_loss = tuning_results["loss"]
 
-    logger.log("Fitting LocalGLMboost model")
     local_glm_boost = LocalGLMBooster(
-        n_estimators=n_estimators,
+        n_estimators=0,
         learning_rate=config["learning_rate"],
         max_depth=config["max_depth"],
         min_samples_leaf=config["min_samples_leaf"],
-        distribution="normal",
-        glm_init=config["glm_init"],
+        distribution=distribution,
+        glm_init=True,
     )
-    local_glm_boost.fit(X=X, y=y, w=w)
+    local_glm_boost.fit(X=X, y=y, w=w, parallel_fit=parallel_fit)
     return local_glm_boost, n_estimators, tuning_loss
 
 
@@ -283,15 +301,18 @@ def consolidate_tuning_loss(tuning_loss, tuning_loss_gbm, features):
 
 
 def add_predictions(data, models, link, features):
-    X, y, mu, w = extract_data(data)
+    X, y, w = extract_data(data)
     # Mean predictions
     for model in models:
         if model == "GBM":
-            data[f"mu_{model}"] = w * link(
-                models[model].predict(sm.add_constant(X.copy()))
-            )
+            data[f"z_{model}"] = models[model].predict(sm.add_constant(X.copy()))
+            data[f"mu_{model}"] = w * link(data[f"z_{model}"])
         else:
-            data[f"mu_{model}"] = w * link(models[model].predict(X))
+            data[f"z_{model}"] = models[model].predict(X=X)
+            data[f"mu_{model}"] = w * link(data[f"z_{model}"])
+
+    # True parameter
+    data["mu"] = w * link(data["z"])
 
     # Regression attentions
     beta_hat = models["LocalGLMboost"].predict_parameter(X=X)
@@ -346,18 +367,15 @@ def save_model_parameters(models, features):
     return model_parameters
 
 
-def calculate_loss_results(train_data, test_data, distribution):
+def calculate_loss_results(train_data, test_data, loss_function):
     loss_table = pd.DataFrame(columns=["train", "test"])
     for data_label, data in zip(["train", "test"], [train_data, test_data]):
-        if "mu" in data.columns:
-            # TODO: Make this more general (i.e. different links)
-            loss_table.loc["True", data_label] = distribution.loss(
-                y=data["y"], z=data["mu"] / data["w"], w=data["w"]
-            ).mean()
-
+        loss_table.loc["True", data_label] = loss_function(
+            y=data["y"], z=data["z"], w=data["w"]
+        ).mean()
         for model in ["Intercept", "GLM", "GBM", "LocalGLMboost"]:
-            loss_table.loc[model, data_label] = distribution.loss(
-                y=data["y"], z=data[f"mu_{model}"], w=data["w"]
+            loss_table.loc[model, data_label] = loss_function(
+                y=data["y"], z=data[f"z_{model}"], w=data["w"]
             ).mean()
     return loss_table
 
@@ -385,12 +403,25 @@ def main(config_path):
     # Load data
     if config["data_source"] == "simulation":
         logger.log("Simulating data")
-        train_data, test_data = simulate_data(config["n"], output_path)
-        distribution = initiate_distribution(distribution="normal")
+        train_data, test_data, features, parallel_fit = simulate_data(
+            config["n"], output_path
+        )
+
+        distribution = "normal"
         link = lambda z: z
+        loss_function = lambda y, z, w: (y - w * link(z)) ** 2
+        stratified = False
+
     elif config["data_source"] == "real":
         logger.log("Loading data")
-        load_data(config["n"], output_path, rng=rng)
+        train_data, test_data, features, parallel_fit = load_data(
+            config["n"], output_path, rng=rng
+        )
+
+        distribution = "poisson"
+        link = lambda z: np.exp(z)
+        loss_function = lambda y, z, w: poisson_deviance(y, w, z)
+        stratified = True
     else:
         raise ValueError("Data source not recognized")
 
@@ -407,6 +438,7 @@ def main(config_path):
         config=config,
         rng=rng,
         logger=logger,
+        stratified=stratified,
     )
     logger.log("LocalGLMboost")
     local_glm_boost, n_estimators, tuning_loss = fit_local_glm_boost(
@@ -415,6 +447,8 @@ def main(config_path):
         config=config,
         rng=rng,
         logger=logger,
+        stratified=stratified,
+        parallel_fit=parallel_fit,
     )
     models = {
         "Intercept": intercept,
@@ -427,14 +461,16 @@ def main(config_path):
     # Summarize output
     logger.log("Summarizing output")
     features = [
-        feature for feature in train_data.columns if feature not in ["y", "mu", "w"]
+        feature
+        for feature in train_data.columns
+        if feature not in ["y", "z", "w", "mu"]
     ]
     tuning_loss = consolidate_tuning_loss(tuning_loss, tuning_loss_gbm, features)
     train_data = add_predictions(train_data, models, link, features)
     test_data = add_predictions(test_data, models, link, features)
     feature_importances = calculate_feature_importance(local_glm_boost, features)
     model_parameters = save_model_parameters(models, features)
-    loss_table = calculate_loss_results(train_data, test_data, distribution)
+    loss_table = calculate_loss_results(train_data, test_data, loss_function)
 
     # Save data
     logger.log("Saving data")

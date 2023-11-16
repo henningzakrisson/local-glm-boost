@@ -1,12 +1,11 @@
 data_source: real
 
-n: 1000
+n: all
 learning_rate: 0.01
-n_estimators_max: 10
-min_samples_split: 10
-min_samples_leaf: 10
+n_estimators_max: 1000
+min_samples_split: 6
+min_samples_leaf: 5
 max_depth: 2
-glm_init: true
 feature_selection: null
 
 n_splits: 2

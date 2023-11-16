@@ -1,8 +1,8 @@
 data_source: simulation
 
-n: 100000
+n: 200000
 learning_rate: 0.01
-n_estimators_max: 10000
+n_estimators_max: 10
 min_samples_split: 10
 min_samples_leaf: 10
 max_depth: 2
