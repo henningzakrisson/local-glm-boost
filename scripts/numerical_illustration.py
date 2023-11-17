@@ -52,7 +52,7 @@ def setup_output_folder():
 
 
 def simulate_data(n, output_path):
-    with open(f"{script_dir}/simulate_data.R", "r") as file:
+    with open(f"{script_dir}/r_scripts/simulate_data.R", "r") as file:
         r_script = file.read()
     # Add number of data points and output path to R script
     r_script = f"N <- {int(np.floor(n/2))}\n" + r_script
@@ -147,7 +147,7 @@ def process_data(train_data, test_data, n, rng):
 
 
 def load_data(n, output_path, rng):
-    with open(f"{script_dir}/load_data.R", "r") as file:
+    with open(f"{script_dir}/r_scripts/load_data.R", "r") as file:
         r_script = file.read()
     # Add output path to R script
     r_script = f'output_dir <- "{output_path}"\n' + r_script
@@ -270,7 +270,7 @@ def fit_local_glm_boost(
     tuning_loss = tuning_results["loss"]
 
     local_glm_boost = LocalGLMBooster(
-        n_estimators=0,
+        n_estimators=n_estimators,
         learning_rate=config["learning_rate"],
         max_depth=config["max_depth"],
         min_samples_leaf=config["min_samples_leaf"],
