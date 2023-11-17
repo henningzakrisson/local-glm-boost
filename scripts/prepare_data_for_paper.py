@@ -45,3 +45,39 @@ for j in range(1, 9):
 # Save the string as a tex file
 with open(f"{sim_data_path}/plot_data/sim_glm_parameters.tex", "w") as f:
     f.write(glm_parameters_string)
+
+# Save the MSE table as a tex file table
+loss_table = pd.read_csv(f"{sim_data_path}/loss_table.csv", index_col=0)
+table_string = ""
+for model in ["True", "Intercept", "GLM", "LocalGLMboost"]:
+    train_loss = loss_table.loc[model, "train"]
+    test_loss = loss_table.loc[model, "test"]
+    table_string += f"{model} & {train_loss:.4f} & {test_loss:.4f} \\\\ \n"
+# LocalGLMnet
+train_loss = 1.0023
+test_loss = 1.0047
+table_string += f"LocalGLMnet & {train_loss:.4f} & {test_loss:.4f} \\\\"
+# Save the string as a tex file
+with open(f"{sim_data_path}/plot_data/sim_loss.tex", "w") as f:
+    f.write(table_string)
+
+# Save a table of n_estimators and beta0 for the LocalGLMboost model
+# as a tex file table
+# First a row with the n_estimators
+kappa_table = "$\\kappa_j$ & "
+for j in range(1, 9):
+    n_estimators = model_parameters["LocalGLMboost"]["n_estimators"][f"X{j}"]
+    kappa_table += f"{n_estimators} & "
+kappa_table = kappa_table[:-2] + "\\\\ \n"
+# Then a row with the beta0
+kappa_table += "$\\widehat{\\beta}_{j}^{0}$ & "
+for j in range(1, 9):
+    beta0 = model_parameters["LocalGLMboost"]["beta0"][f"X{j}"]
+    # If the beta0 when rounded to 3 decimals is 0, then write 0
+    if round(beta0, 3) == 0.0:
+        beta0 = 0
+    kappa_table += f"{beta0:.3f} & "
+kappa_table = kappa_table[:-2] + "\\\\ \n"
+# Save the string as a tex file
+with open(f"{sim_data_path}/plot_data/sim_parameters.tex", "w") as f:
+    f.write(kappa_table)
