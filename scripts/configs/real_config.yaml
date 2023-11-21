@@ -1,0 +1,15 @@
+data_source: real
+
+n: all
+learning_rate: 0.01
+n_estimators_max: 1000
+min_samples_split: 6
+min_samples_leaf: 5
+max_depth: 2
+feature_selection: null
+
+n_splits: 2
+random_state: 14
+parallel: true
+n_jobs: -1
+stratified: true

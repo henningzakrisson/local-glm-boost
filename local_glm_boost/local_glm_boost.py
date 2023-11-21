@@ -112,7 +112,7 @@ class LocalGLMBooster:
 
         X, y, w = fix_data(X=X, y=y, w=w if w is not None else np.ones_like(y))
 
-        self.z0, self.beta0 = self._adjust_glm_model(X=X, y=y, z=0, w=w)
+        self.z0, self.beta0 = self._initiate_glm_model(X=X, y=y, w=w)
         z = self.z0 + (self.beta0.T @ X.T).T.reshape(-1)
 
         parallel_features = [feature for sublist in parallel_fit for feature in sublist]
@@ -154,8 +154,10 @@ class LocalGLMBooster:
                     )
 
         # Re-fit the initiating model given the tree predictions
-        self.z0, self.beta0 = self._adjust_glm_model(
-            X=X, y=y, z=z - self.z0 - (self.beta0.T @ X.T).T.reshape(-1), w=w
+        self.z0 = self._adjust_initiation(
+            y=y,
+            w=w,
+            z=z,
         )
 
     def _initialize_feature_metadata(self, X: Union[np.ndarray, pd.DataFrame]) -> None:
@@ -196,28 +198,26 @@ class LocalGLMBooster:
             parameter_value=self.glm_init, feature_names=self.feature_names
         )
 
-    def _adjust_glm_model(
+    def _initiate_glm_model(
         self,
         X: np.ndarray,
         y: np.ndarray,
-        z: Union[np.ndarray, float],
         w: np.ndarray,
     ) -> Tuple[float, np.ndarray]:
         """
-        Adjust the initalization of the model.
+        Initiate with a GLM.
         This will be done as a GLM for all dimensions specified in the model attribute glm_init.
         If all glm_init are False, the initialization is a constant MLE since the intercept is still estimated.
 
         :param X: The input training data for the model as a numpy array.
         :param y: The target values.
-        :param z: The current parameter estimates.
         :param w: The weights of the observations.
         :return: The initial parameter estimates.
         """
         features_to_initiate = [glm_init for glm_init in self.glm_init.values()]
         to_minimize = lambda z0_and_beta: self.distribution.loss(
             y=y,
-            z=z + z0_and_beta[0] + X[:, features_to_initiate] @ z0_and_beta[1:],
+            z=z0_and_beta[0] + X[:, features_to_initiate] @ z0_and_beta[1:],
             w=w,
         ).sum()
         glm_coefficients = minimize(
@@ -228,6 +228,33 @@ class LocalGLMBooster:
         beta0 = np.zeros(X.shape[1])
         beta0[features_to_initiate] = glm_coefficients[1:]
         return z0, beta0
+
+    def _adjust_initiation(
+        self,
+        y: np.ndarray,
+        w: np.ndarray,
+        z: np.ndarray,
+    ) -> float:
+        """
+        Adjust the initiation of the model given the tree predictions.
+
+        :param y: The target values.
+        :param w: The weights of the observations.
+        :param z: The current prediction values.
+        :return: The new intercept
+        """
+        to_minimize = lambda z0: self.distribution.loss(
+            y=y,
+            z=z - self.z0 + z0,
+            w=w,
+        ).sum()
+        z0_opt = minimize(
+            fun=to_minimize,
+            x0=self.z0,
+        )[
+            "x"
+        ][0]
+        return z0_opt
 
     def predict_parameter(
         self,
