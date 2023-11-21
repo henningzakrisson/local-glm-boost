@@ -177,15 +177,76 @@ if prefix == "sim":
         f"{data_path}/plot_data/{prefix}_mu_hat.csv", index=False
     )
 
+elif prefix == "real":
+    window = 1000
+    # Load the entire test data
+    test_data = pd.read_csv(f"{data_path}/test_data.csv", index_col=0)
+    # Sort the data by the predicted z of the LocalGLMboost model
+    test_data = test_data.sort_values(by="z_LocalGLMboost").reset_index(drop=True)
+    # Calculate rolling averages of the predicted exp(z) for models:
+    # Intercept, GLM, GBM, LocalGLMboost
+    rolling_average = (
+        np.exp(test_data[["z_Intercept", "z_GLM", "z_GBM", "z_LocalGLMboost"]])
+        .rolling(window=window, center=True, min_periods=1)
+        .mean()
+    )
+    # Name the columns after the models
+    rolling_average.columns = [col.replace("z_", "") for col in rolling_average.columns]
+    # Also add rolling window of y divided by rolling window of w
+    rolling_average["y"] = (
+        test_data["y"].rolling(window=window, center=True, min_periods=1).mean()
+        / test_data["w"].rolling(window=window, center=True, min_periods=1).mean()
+    )
+    # Sort so that y comes first
+    rolling_average = rolling_average[["y", "Intercept", "GLM", "GBM", "LocalGLMboost"]]
+    rolling_average.index.name = "index"
+    # Sample 500 rows from the rolling average evenly
+    rolling_average = rolling_average.iloc[:: len(rolling_average) // 500, :]
+    # Save the rolling average as a csv file
+    rolling_average.to_csv(f"{data_path}/plot_data/{prefix}_mu_hat.csv")
+
+
 # Feature importance plot
 feature_importance = pd.read_csv(f"{data_path}/feature_importance.csv", index_col=0)
+if prefix == "real":
+    # Sum the categorical features importance
+    cat_features = ["VehGas", "VehBrand", "Region"]
+    for feature in cat_features:
+        dummy_features = [
+            dummy_feature
+            for dummy_feature in feature_importance.columns
+            if dummy_feature.startswith(feature)
+        ]
+        feature_importance[feature] = feature_importance[dummy_features].sum(axis=1)
+        feature_importance.loc[feature] = feature_importance.loc[dummy_features].sum()
+        # Drop the dummy features
+        feature_importance = feature_importance.drop(dummy_features, axis=1)
+        feature_importance = feature_importance.drop(dummy_features, axis=0)
+
+    # Make sure order is correct
+    feature_importance = feature_importance[
+        [
+            "VehPower",
+            "VehAge",
+            "Density",
+            "DrivAge",
+            "BonusMalus",
+            "Area",
+            "VehGas",
+            "VehBrand",
+            "Region",
+        ]
+    ]
+# Normalize the feature importance
 feature_importance = feature_importance.div(
     feature_importance.sum(axis=1), axis=0
 ).fillna(0)
-feature_importance.index = range(len(features))
+feature_importance.index = range(len(feature_importance))
 feature_importance.index.name = "beta"
-feature_importance.columns = range(len(features))
+feature_importance.columns = range(len(feature_importance.columns))
 feature_importance = feature_importance.round(2)
+
+# Melt for heatmap plot
 fi_long = feature_importance.melt(ignore_index=False, var_name="feature").reset_index()
 fi_long = fi_long.sort_values(by=["feature", "beta"])[["feature", "beta", "value"]]
 fi_long.to_csv(f"{data_path}/plot_data/{prefix}_feature_importance.csv", index=False)
