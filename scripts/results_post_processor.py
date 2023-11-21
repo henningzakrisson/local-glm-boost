@@ -50,7 +50,6 @@ features = [
     and col != "z"
     and col != "mu"
 ]
-attentions = [f"beta_{feature}" for feature in features]
 
 # Loss table
 mse_table = pd.read_csv(f"{data_path}/loss_table.csv", index_col=0)
@@ -158,14 +157,29 @@ parameter_table.index.name = "featureName"
 parameter_table.to_csv(f"{data_path}/plot_data/{prefix}_parameters.csv")
 
 # Regression attentions
-test_data[features + attentions].to_csv(
+if prefix == "sim":
+    features_for_attentions = features
+elif prefix == "real":
+    # Only consider the continuous features
+    cat_features = ["VehGas", "VehBrand", "Region"]
+    features_for_attentions = [
+        feature for feature in features if not feature.startswith(tuple(cat_features))
+    ]
+
+attentions = [f"beta_{feature}" for feature in features_for_attentions]
+
+test_data[features_for_attentions + attentions].to_csv(
     f"{data_path}/plot_data/{prefix}_attentions.csv", index=False
 )
 # GLM coefficient tex definitions for the attention plot
 glm_parameters_string = ""
-for j, feature in enumerate(features, start=1):
+for j, feature in enumerate(features_for_attentions, start=1):
     this_glm_parameter = model_parameters["LocalGLMboost"]["beta0"][feature]
-    glm_parameters_string += f"\\def\\beta{int_to_roman(j)}{{{this_glm_parameter}}}\n"
+    if prefix == "sim":
+        parameter_name = f"{prefix}Beta{int_to_roman(j)}"
+    elif prefix == "real":
+        parameter_name = f"{prefix}Beta{feature}"
+    glm_parameters_string += f"\\def\\{parameter_name}{{{this_glm_parameter:.3f}}}\n"
 
 with open(f"{data_path}/plot_data/{prefix}_glm_parameters.tex", "w") as f:
     f.write(glm_parameters_string)
