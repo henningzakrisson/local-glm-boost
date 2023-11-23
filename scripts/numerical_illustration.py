@@ -102,7 +102,7 @@ def process_data(train_data, test_data, n, rng):
         "Region",
         "VehGas",
     ]
-    features = continuous_features
+    features = []  # Finished features
     parallel_fit = []  # Features to fit in parallel
 
     # Concatenate dataframes for ease of processing
@@ -112,6 +112,12 @@ def process_data(train_data, test_data, n, rng):
 
     # Preprocess area
     data["Area"] = data["Area"].apply(lambda x: ord(x) - 65)
+
+    # Standardize continuous features
+    train_mean = data.loc[data["train"] == 1, continuous_features].mean()
+    train_std = data.loc[data["train"] == 1, continuous_features].std()
+    data[continuous_features] = data[continuous_features].sub(train_mean).div(train_std)
+    features += continuous_features
 
     # One-hot encode categorical features
     for feature in categorical_features:
@@ -123,11 +129,6 @@ def process_data(train_data, test_data, n, rng):
         ]
         parallel_fit.append(dummy_feature_indices)
         features += dummies.columns.tolist()
-
-    # Standardize all features
-    train_mean = data.loc[data["train"] == 1, features].mean()
-    train_std = data.loc[data["train"] == 1, features].std()
-    data[features] = data[features].sub(train_mean).div(train_std)
 
     data.rename(
         columns={
