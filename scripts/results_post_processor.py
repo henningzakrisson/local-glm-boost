@@ -4,7 +4,7 @@ import json
 import numpy as np
 import yaml
 
-run_id = 20
+run_id = 31
 random_state = 1
 
 
@@ -50,6 +50,16 @@ features = [
     and col != "z"
     and col != "mu"
 ]
+# Regression attentions
+if prefix == "sim":
+    features_for_attentions = features
+elif prefix == "real":
+    # Only consider the continuous features
+    cat_features = ["VehGas", "VehBrand", "Region"]
+    features_for_attentions = [
+        feature for feature in features if not feature.startswith(tuple(cat_features))
+    ]
+relevant_attentions = [f"beta_{feature}" for feature in features_for_attentions]
 
 # Loss table
 mse_table = pd.read_csv(f"{data_path}/loss_table.csv", index_col=0)
@@ -76,11 +86,20 @@ parameter_table.loc["betaValue"] = np.array(
     list(model_parameters["LocalGLMboost"]["beta0"].values())
 ).round(3)
 
-# Also calculate the variable importance and add it to this table
-for feature in features:
-    parameter_table.loc["variableImportance", feature] = (
-        train_data[f"beta_{feature}"].abs().mean()
-    )
+# Calculate the variable importance and add it to this table
+parameter_table.loc[
+    "variableImportance", [attention[5:] for attention in relevant_attentions]
+] = (
+    train_data[relevant_attentions].abs().mean()
+    / train_data[relevant_attentions].abs().mean().sum()
+).values
+parameter_table.loc[
+    "variableImportance", [attention[5:] for attention in relevant_attentions]
+] = parameter_table.loc[
+    "variableImportance", [attention[5:] for attention in relevant_attentions]
+].apply(
+    lambda x: f"{x:.2f}"
+)
 
 if prefix == "sim":
     # Fix the column names
@@ -88,16 +107,12 @@ if prefix == "sim":
         f"$x_{i}$" for i in range(1, len(parameter_table.columns) + 1)
     ]
     # Normalize the variable importance
-    parameter_table.loc["variableImportance"] = parameter_table.loc[
-        "variableImportance"
-    ].div(parameter_table.loc["variableImportance"].sum())
+
     # Make sure all numbers have zeros in the decimal places in the beta row
     parameter_table.loc["betaValue"] = parameter_table.loc["betaValue"].apply(
-        lambda x: f"{x:.3f}"
+        lambda x: f"{x:.2f}"
     )
-    parameter_table.loc["variableImportance"] = parameter_table.loc[
-        "variableImportance"
-    ].apply(lambda x: f"{x:.2f}")
+
 elif prefix == "real":
     # If the data is real, we need to make ranges for categorical variables
     # Make sure all numbers have zeros in the decimal places in the beta row
@@ -118,20 +133,11 @@ elif prefix == "real":
         beta_max = parameter_table.loc["betaValue", feature_dummies].max()
         parameter_table.loc["betaValue", feature] = f"({beta_min}-{beta_max})"
 
-        # The variable importance is the sum of the variable importance of the dummy features
-        parameter_table.loc["variableImportance", feature] = parameter_table.loc[
-            "variableImportance", feature_dummies
-        ].sum()
+        # The variable importance is not calculated for categorical variables
+        parameter_table.loc["variableImportance", feature] = "-"
 
         # Drop the dummy features
         parameter_table = parameter_table.drop(feature_dummies, axis=1)
-    # Normalize the variable importance
-    parameter_table.loc["variableImportance"] = parameter_table.loc[
-        "variableImportance"
-    ].div(parameter_table.loc["variableImportance"].sum())
-    parameter_table.loc["variableImportance"] = parameter_table.loc[
-        "variableImportance"
-    ].apply(lambda x: f"{x:.2f}")
 
     # Make sure the order is correct
     parameter_table = parameter_table[
@@ -156,19 +162,9 @@ parameter_table = parameter_table.transpose()
 parameter_table.index.name = "featureName"
 parameter_table.to_csv(f"{data_path}/plot_data/{prefix}_parameters.csv")
 
-# Regression attentions
-if prefix == "sim":
-    features_for_attentions = features
-elif prefix == "real":
-    # Only consider the continuous features
-    cat_features = ["VehGas", "VehBrand", "Region"]
-    features_for_attentions = [
-        feature for feature in features if not feature.startswith(tuple(cat_features))
-    ]
 
-attentions = [f"beta_{feature}" for feature in features_for_attentions]
-
-test_data[features_for_attentions + attentions].to_csv(
+# Attention plots
+test_data[features_for_attentions + relevant_attentions].to_csv(
     f"{data_path}/plot_data/{prefix}_attentions.csv", index=False
 )
 # GLM coefficient tex definitions for the attention plot
