@@ -66,8 +66,9 @@ def simulate_data(n, output_path):
 
     features = [col for col in train_data.columns if col not in ["y", "w", "z", "mu"]]
     parallel_fit = []
+    intercept_term = True
 
-    return train_data, test_data, features, parallel_fit
+    return train_data, test_data, features, parallel_fit, intercept_term
 
 
 def process_data(train_data, test_data, n, rng):
@@ -162,7 +163,9 @@ def load_data(n, output_path, rng):
         rng=rng,
     )
 
-    return train_data, test_data, features, parallel_fit
+    intercept_term = False
+
+    return train_data, test_data, features, parallel_fit, intercept_term
 
 
 # Calculate deviance
@@ -191,12 +194,13 @@ def fit_intercept(data, distribution):
     return intercept
 
 
-def fit_glm(data, distribution):
+def fit_glm(data, distribution, intercept_term):
     X, y, w = extract_data(data)
     glm = LocalGLMBooster(
         n_estimators=0,
         distribution=distribution,
         glm_init=True,
+        intercept_term=intercept_term,
     )
     glm.fit(X=X, y=y, w=w)
     return glm
@@ -243,7 +247,15 @@ def fit_gbm(data, distribution, config, rng, logger, stratified):
 
 
 def fit_local_glm_boost(
-    data, distribution, config, rng, logger, stratified, parallel_fit
+    data,
+    distribution,
+    config,
+    rng,
+    logger,
+    stratified,
+    parallel_fit,
+    intercept_term,
+    n_estimators_max,
 ):
     X, y, w = extract_data(data)
     local_glm_boost = LocalGLMBooster(
@@ -253,13 +265,14 @@ def fit_local_glm_boost(
         min_samples_leaf=config["min_samples_leaf"],
         distribution=distribution,
         glm_init=True,
+        intercept_term=intercept_term,
     )
     tuning_results = tune_n_estimators(
         X=X,
         y=y,
         w=w,
         model=local_glm_boost,
-        n_estimators_max=config["n_estimators_max"],
+        n_estimators_max=n_estimators_max,
         n_splits=config["n_splits"],
         rng=rng,
         logger=logger,
@@ -405,7 +418,7 @@ def main(config_path):
     # Load data
     if config["data_source"] == "simulation":
         logger.log("Simulating data")
-        train_data, test_data, features, parallel_fit = simulate_data(
+        train_data, test_data, features, parallel_fit, intercept_term = simulate_data(
             config["n"], output_path
         )
 
@@ -413,10 +426,11 @@ def main(config_path):
         link = lambda z: z
         loss_function = lambda y, z, w: (y - w * link(z)) ** 2
         stratified = False
+        n_estimators_max = config["n_estimators_max"]
 
     elif config["data_source"] == "real":
         logger.log("Loading data")
-        train_data, test_data, features, parallel_fit = load_data(
+        train_data, test_data, features, parallel_fit, intercept_term = load_data(
             config["n"], output_path, rng=rng
         )
 
@@ -424,6 +438,25 @@ def main(config_path):
         link = lambda z: np.exp(z)
         loss_function = lambda y, z, w: poisson_deviance(y, w, z)
         stratified = True
+        categorical_features = [
+            "VehBrand",
+            "Region",
+            "VehGas",
+        ]
+        features = [
+            feature
+            for feature in train_data.columns
+            if feature not in ["y", "z", "w", "mu"]
+        ]
+        # n_estimators_max should be a list that has the value config["n_estimators_max"] for each feature position
+        # where the feature does not start with any of the strings in categorical_features
+        n_estimators_max = [
+            config["n_estimators_max"]
+            if not any([feature.startswith(string) for string in categorical_features])
+            else 0
+            for feature in features
+        ]
+
     else:
         raise ValueError("Data source not recognized")
 
@@ -432,7 +465,9 @@ def main(config_path):
     logger.log("Intercept")
     intercept = fit_intercept(data=train_data, distribution=distribution)
     logger.log("GLM")
-    glm = fit_glm(data=train_data, distribution=distribution)
+    glm = fit_glm(
+        data=train_data, distribution=distribution, intercept_term=intercept_term
+    )
     logger.log("GBM")
     gbm, n_estimators_gbm, tuning_loss_gbm = fit_gbm(
         data=train_data,
@@ -451,6 +486,8 @@ def main(config_path):
         logger=logger,
         stratified=stratified,
         parallel_fit=parallel_fit,
+        intercept_term=intercept_term,
+        n_estimators_max=n_estimators_max,
     )
     models = {
         "Intercept": intercept,
