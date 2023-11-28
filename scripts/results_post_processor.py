@@ -128,10 +128,10 @@ elif prefix == "real":
         ]
         kappa_min = parameter_table.loc["kappaValue", feature_dummies].min()
         kappa_max = parameter_table.loc["kappaValue", feature_dummies].max()
-        parameter_table.loc["kappaValue", feature] = f"({kappa_min}-{kappa_max})"
+        parameter_table.loc["kappaValue", feature] = f"({kappa_min} -- {kappa_max})"
         beta_min = parameter_table.loc["betaValue", feature_dummies].min()
         beta_max = parameter_table.loc["betaValue", feature_dummies].max()
-        parameter_table.loc["betaValue", feature] = f"({beta_min}-{beta_max})"
+        parameter_table.loc["betaValue", feature] = f"({beta_min} -- {beta_max})"
 
         # The variable importance is not calculated for categorical variables
         parameter_table.loc["variableImportance", feature] = "-"
