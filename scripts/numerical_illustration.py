@@ -450,12 +450,7 @@ def main(config_path):
         ]
         # n_estimators_max should be a list that has the value config["n_estimators_max"] for each feature position
         # where the feature does not start with any of the strings in categorical_features
-        n_estimators_max = [
-            config["n_estimators_max"]
-            if not any([feature.startswith(string) for string in categorical_features])
-            else 0
-            for feature in features
-        ]
+        n_estimators_max = [config["n_estimators_max"] for feature in features]
 
     else:
         raise ValueError("Data source not recognized")
