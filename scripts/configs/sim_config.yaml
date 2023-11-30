@@ -1,5 +1,5 @@
 # Data parameters
-data_source: simulation
+data_source: sim
 n: 200000
 learning_rate: 0.01
 n_estimators_max: 10000

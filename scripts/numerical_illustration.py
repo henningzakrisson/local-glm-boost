@@ -465,7 +465,7 @@ def create_attention_plot(test_data, features, config, output_path, rng):
         f.write(glm_parameters_string)
 
 
-def save_model_parameters(output_path, config, train_data, features):
+def save_model_parameters_table(output_path, config, train_data, features):
     prefix = config["data_source"]
 
     # Model parameters
@@ -789,15 +789,15 @@ def main(config_path):
     with open(f"{output_path}/model_parameters.json", "w") as json_file:
         json.dump(model_parameters, json_file)
 
-    logger.log("Done!")
-
     # Postprocess data
     logger.log("Postprocessing data")
     os.makedirs(f"{output_path}/plot_data", exist_ok=True)
     create_loss_table(output_path, config)
     create_attention_plot(test_data, features, config, output_path, rng)
-    save_model_parameters(output_path, config, train_data, features)
+    save_model_parameters_table(output_path, config, train_data, features)
     create_prediction_plot(config, output_path, test_data)
+
+    logger.log("Done!")
 
 
 if __name__ == "__main__":
