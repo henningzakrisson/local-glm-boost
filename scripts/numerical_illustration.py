@@ -381,6 +381,7 @@ def calculate_loss_results(train_data, test_data, loss_function):
             ).mean()
     return loss_table
 
+
 def int_to_roman(num):
     val = [1000, 900, 500, 400, 100, 90, 50, 40, 10, 9, 5, 4, 1]
     syms = ["M", "CM", "D", "CD", "C", "XC", "L", "XL", "X", "IX", "V", "IV", "I"]
@@ -393,7 +394,8 @@ def int_to_roman(num):
         i += 1
     return roman_num
 
-def create_loss_table(output_path,config):
+
+def create_loss_table(output_path, config):
     # Loss table
     prefix = config["data_source"]
     mse_table = pd.read_csv(f"{output_path}/loss_table.csv", index_col=0)
@@ -410,7 +412,7 @@ def create_loss_table(output_path,config):
     mse_table.to_csv(f"{output_path}/plot_data/{prefix}_loss.csv")
 
 
-def create_attention_plot(test_data,features,config, output_path, rng):
+def create_attention_plot(test_data, features, config, output_path, rng):
     prefix = config["data_source"]
 
     random_state = rng.integers(0, 10000)
@@ -422,7 +424,9 @@ def create_attention_plot(test_data,features,config, output_path, rng):
         # Only consider the continuous features
         cat_features = ["VehGas", "VehBrand", "Region"]
         features_for_attentions = [
-            feature for feature in features if not feature.startswith(tuple(cat_features))
+            feature
+            for feature in features
+            if not feature.startswith(tuple(cat_features))
         ]
     relevant_attentions = [f"beta_{feature}" for feature in features_for_attentions]
 
@@ -440,13 +444,15 @@ def create_attention_plot(test_data,features,config, output_path, rng):
             parameter_name = f"{prefix}Beta{int_to_roman(j)}"
         elif prefix == "real":
             parameter_name = f"{prefix}Beta{feature}"
-        glm_parameters_string += f"\\def\\{parameter_name}{{{this_glm_parameter:.3f}}}\n"
+        glm_parameters_string += (
+            f"\\def\\{parameter_name}{{{this_glm_parameter:.3f}}}\n"
+        )
 
     with open(f"{output_path}/plot_data/{prefix}_glm_parameters.tex", "w") as f:
         f.write(glm_parameters_string)
 
 
-def save_model_parameters(output_path,config,train_data,features):
+def save_model_parameters(output_path, config, train_data, features):
     prefix = config["data_source"]
 
     # Model parameters
@@ -455,7 +461,9 @@ def save_model_parameters(output_path,config,train_data,features):
     parameter_table = pd.DataFrame(
         index=pd.Index(["kappaValue", "betaValue"], name="parameter"), columns=features
     )
-    parameter_table.loc["kappaValue"] = model_parameters["LocalGLMboost"]["n_estimators"]
+    parameter_table.loc["kappaValue"] = model_parameters["LocalGLMboost"][
+        "n_estimators"
+    ]
     parameter_table.loc["betaValue"] = np.array(
         list(model_parameters["LocalGLMboost"]["beta0"].values())
     ).round(3)
@@ -466,10 +474,11 @@ def save_model_parameters(output_path,config,train_data,features):
         # Only consider the continuous features
         cat_features = ["VehGas", "VehBrand", "Region"]
         features_for_attentions = [
-            feature for feature in features if not feature.startswith(tuple(cat_features))
+            feature
+            for feature in features
+            if not feature.startswith(tuple(cat_features))
         ]
     relevant_attentions = [f"beta_{feature}" for feature in features_for_attentions]
-
 
     # Calculate the variable importance and add it to this table
     parameter_table.loc[
@@ -545,6 +554,7 @@ def save_model_parameters(output_path,config,train_data,features):
     parameter_table.index.name = "featureName"
     parameter_table.to_csv(f"{output_path}/plot_data/{prefix}_parameters.csv")
 
+
 def create_prediction_plot(config, output_path, test_data):
     prefix = config["data_source"]
 
@@ -569,14 +579,18 @@ def create_prediction_plot(config, output_path, test_data):
             .mean()
         )
         # Name the columns after the models
-        rolling_average.columns = [col.replace("z_", "") for col in rolling_average.columns]
+        rolling_average.columns = [
+            col.replace("z_", "") for col in rolling_average.columns
+        ]
         # Also add rolling window of y divided by rolling window of w
         rolling_average["y"] = (
             test_data["y"].rolling(window=window, center=True, min_periods=1).mean()
             / test_data["w"].rolling(window=window, center=True, min_periods=1).mean()
         )
         # Sort so that y comes first
-        rolling_average = rolling_average[["y", "Intercept", "GLM", "GBM", "LocalGLMboost"]]
+        rolling_average = rolling_average[
+            ["y", "Intercept", "GLM", "GBM", "LocalGLMboost"]
+        ]
         rolling_average.index.name = "index"
         # Sample 500 rows from the rolling average evenly
         rolling_average = rolling_average.iloc[:: len(rolling_average) // 500, :]
@@ -584,11 +598,13 @@ def create_prediction_plot(config, output_path, test_data):
         rolling_average.to_csv(f"{output_path}/plot_data/{prefix}_mu_hat.csv")
 
 
-def save_feature_importance(config,output_path):
+def save_feature_importance(config, output_path):
     prefix = config["data_source"]
 
     # Feature importance plot
-    feature_importance = pd.read_csv(f"{output_path}/feature_importance.csv", index_col=0)
+    feature_importance = pd.read_csv(
+        f"{output_path}/feature_importance.csv", index_col=0
+    )
     if prefix == "real":
         # Sum the categorical features importance
         cat_features = ["VehGas", "VehBrand", "Region"]
@@ -599,7 +615,9 @@ def save_feature_importance(config,output_path):
                 if dummy_feature.startswith(feature)
             ]
             feature_importance[feature] = feature_importance[dummy_features].sum(axis=1)
-            feature_importance.loc[feature] = feature_importance.loc[dummy_features].sum()
+            feature_importance.loc[feature] = feature_importance.loc[
+                dummy_features
+            ].sum()
             # Drop the dummy features
             feature_importance = feature_importance.drop(dummy_features, axis=1)
             feature_importance = feature_importance.drop(dummy_features, axis=0)
@@ -628,9 +646,13 @@ def save_feature_importance(config,output_path):
     feature_importance = feature_importance.round(2)
 
     # Melt for heatmap plot
-    fi_long = feature_importance.melt(ignore_index=False, var_name="feature").reset_index()
+    fi_long = feature_importance.melt(
+        ignore_index=False, var_name="feature"
+    ).reset_index()
     fi_long = fi_long.sort_values(by=["feature", "beta"])[["feature", "beta", "value"]]
-    fi_long.to_csv(f"{output_path}/plot_data/{prefix}_feature_importance.csv", index=False)
+    fi_long.to_csv(
+        f"{output_path}/plot_data/{prefix}_feature_importance.csv", index=False
+    )
 
 
 def main(config_path):
@@ -740,10 +762,11 @@ def main(config_path):
     # Postprocess data
     logger.log("Postprocessing data")
     os.makedirs(f"{output_path}/plot_data", exist_ok=True)
-    create_loss_table(output_path,config)
-    create_attention_plot(test_data,features,config, output_path, rng)
-    save_model_parameters(output_path,config,train_data,features)
+    create_loss_table(output_path, config)
+    create_attention_plot(test_data, features, config, output_path, rng)
+    save_model_parameters(output_path, config, train_data, features)
     create_prediction_plot(config, output_path, test_data)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
