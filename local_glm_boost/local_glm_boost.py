@@ -29,6 +29,7 @@ class LocalGLMBooster:
         min_samples_leaf: Hyperparameter[int] = 1,
         max_depth: Hyperparameter[int] = 3,
         glm_init: Hyperparameter[bool] = True,
+        intercept_term: Hyperparameter[bool] = True,
         feature_selection: Optional[FeatureSelection] = None,
     ):
         """
@@ -41,6 +42,7 @@ class LocalGLMBooster:
         :param min_samples_leaf: Minimum number of samples required at a leaf node. Dimension-wise or global for all coefficients.
         :param max_depth: Maximum depths of each decision tree. Dimension-wise or global for all coefficients.
         :param glm_init: Whether to initialize the model with a GLM fit.
+        :param intercept_term: Whether to include an intercept term in the model.
         :param feature_selection: Features to use for each coefficient. A dictionary with the coefficient name or number as key and a list of feature names or numbers as value.
         """
         if isinstance(distribution, str):
@@ -54,6 +56,7 @@ class LocalGLMBooster:
         self.min_samples_leaf = min_samples_leaf
         self.max_depth = max_depth
         self.glm_init = glm_init
+        self.intercept_term = intercept_term
         self.feature_selection = feature_selection
 
         self.p = None
@@ -215,18 +218,31 @@ class LocalGLMBooster:
         :return: The initial parameter estimates.
         """
         features_to_initiate = [glm_init for glm_init in self.glm_init.values()]
-        to_minimize = lambda z0_and_beta: self.distribution.loss(
-            y=y,
-            z=z0_and_beta[0] + X[:, features_to_initiate] @ z0_and_beta[1:],
-            w=w,
-        ).sum()
-        glm_coefficients = minimize(
-            fun=to_minimize,
-            x0=np.zeros(1 + sum(features_to_initiate)),
-        )["x"]
-        z0 = glm_coefficients[0]
-        beta0 = np.zeros(X.shape[1])
-        beta0[features_to_initiate] = glm_coefficients[1:]
+
+        if self.intercept_term:
+            to_minimize = lambda z0_and_beta: self.distribution.loss(
+                y=y,
+                z=z0_and_beta[0] + X[:, features_to_initiate] @ z0_and_beta[1:],
+                w=w,
+            ).sum()
+            glm_coefficients = minimize(
+                fun=to_minimize,
+                x0=np.zeros(1 + sum(features_to_initiate)),
+            )["x"]
+            z0 = glm_coefficients[0]
+            beta0 = np.zeros(X.shape[1])
+            beta0[features_to_initiate] = glm_coefficients[1:]
+        else:
+            to_minimize = lambda beta: self.distribution.loss(
+                y=y,
+                z=X[:, features_to_initiate] @ beta,
+                w=w,
+            ).sum()
+            beta0 = minimize(
+                fun=to_minimize,
+                x0=np.zeros(sum(features_to_initiate)),
+            )["x"]
+            z0 = 0
         return z0, beta0
 
     def _adjust_initiation(
