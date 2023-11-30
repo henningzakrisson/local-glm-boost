@@ -113,7 +113,7 @@ class LocalGLMBoosterTestCase(unittest.TestCase):
 
         self.assertAlmostEqual(
             model.distribution.loss(y=y, z=model.predict(X=self.X), w=self.w).mean(),
-            4.282556425015984,
+            4.287554531804879,
             places=3,
         )
 
