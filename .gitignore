@@ -17,5 +17,6 @@ venv/
 /notebooks/
 /data/
 .DS_Store
+build/
 ```
 
