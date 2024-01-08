@@ -22,7 +22,7 @@ You can install the package from the GitHub repository by following these steps:
     pip install -r requirements.txt
     ```
 ## Usage example
-````
+````python
 from local_glm_boost import LocalGLMBooster
 import numpy as np
 import statsmodels.api as sm
@@ -56,7 +56,7 @@ print('LocalGLMboost: ', ((lgb.predict(X_train) - y_train)**2).mean())
 print('Out-of-sample loss')
 print('GLM: ', ((glm.predict(X_test) - y_test)**2).mean())
 print('LocalGLMboost: ', ((lgb.predict(X_test) - y_test)**2).mean())
-```
+````
 
 ## Contact
 If you have any questions, feel free to contact me [here](mailto:henning.zakrisson@gmail.com).
