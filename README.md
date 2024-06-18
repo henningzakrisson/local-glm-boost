@@ -1,7 +1,7 @@
 # local-glm-boost
 Python package that implements the LocalGLMBoost algorithm for explainable machine learning regression, a version
 of a cyclically boosted tree-based varying coefficient model.
-For more on the model, see the [preprint](https://arxiv.org/abs/2401.05982)
+For more on the model, see the [preprint](https://arxiv.org/abs/2401.05982).
 
 ## Installation
 You can install the package from the GitHub repository by following these steps:
