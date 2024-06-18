@@ -17,9 +17,9 @@ You can install the package from the GitHub repository by following these steps:
     ```bash
     source venv/bin/activate
     ```
-4. Install the required dependencies:
+4. Install the package
     ```bash
-    pip install -r requirements.txt
+    pip install -e .
     ```
 ## Usage example
 ````python
