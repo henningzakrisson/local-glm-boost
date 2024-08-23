@@ -419,8 +419,7 @@ def create_loss_table(output_path, config):
     elif prefix == "real":
         mse_table = 100 * mse_table.drop("True")
         mse_table.loc["LocalGLMnet"] = [23.728, 23.945]
-    mse_table = mse_table.round(4)
-    mse_table = mse_table.applymap(lambda x: f"{x:.3f}")
+    mse_table = mse_table.round(3).astype(str)
     mse_table.to_csv(f"{output_path}/plot_data/{prefix}_loss.csv")
 
 

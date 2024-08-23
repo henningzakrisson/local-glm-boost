@@ -1,4 +1,4 @@
-numpy
+numpy==1.x
 scikit_learn
 scipy
 joblib
