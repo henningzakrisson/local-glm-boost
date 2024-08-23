@@ -291,6 +291,7 @@ def fit_local_glm_boost(
     )
     n_estimators = tuning_results["n_estimators"]
     tuning_loss = tuning_results["loss"]
+    fold_feature_importances = tuning_results["feature_importances"]
     tuning_time = time.time() - start_tuning_time
 
     start_fit_time = time.time()
@@ -304,7 +305,14 @@ def fit_local_glm_boost(
     )
     local_glm_boost.fit(X=X, y=y, w=w, parallel_fit=parallel_fit)
     fit_time = time.time() - start_fit_time
-    return local_glm_boost, n_estimators, tuning_loss, tuning_time, fit_time
+    return (
+        local_glm_boost,
+        n_estimators,
+        tuning_loss,
+        tuning_time,
+        fit_time,
+        fold_feature_importances,
+    )
 
 
 def consolidate_tuning_loss(tuning_loss, tuning_loss_gbm, features):
@@ -412,6 +420,26 @@ def create_time_table(tune_times, fit_times):
         time_table.loc[model, "tune_time"] = tune_times[model]
         time_table.loc[model, "fit_time"] = fit_times[model]
     return time_table
+
+
+def create_feature_importance_variation_table(feature_importances):
+    # Calculate the variance of the feature importances over the folds
+    feature_importance_std = pd.DataFrame(
+        index=feature_importances[0].keys(), columns=feature_importances[0][0].keys()
+    )
+    # Go through all features
+    for feature in feature_importance_std.index:
+        # and the features that affect the coefficient functions
+        for modifier_feature in feature_importance_std.columns:
+            # Calculate how much the feature importance of this interaction varies over the folds
+            # as a measure of feature impoortance robustness
+            feature_importance_std.loc[feature, modifier_feature] = np.std(
+                [
+                    feature_importances[fold][feature][modifier_feature]
+                    for fold in feature_importances.keys()
+                ]
+            )
+    return feature_importance_std
 
 
 def int_to_roman(num):
@@ -780,6 +808,7 @@ def main(config_path):
         tuning_loss,
         tune_time_local_glm_boost,
         fit_time_local_glm_boost,
+        fold_feature_importances,
     ) = fit_local_glm_boost(
         data=train_data,
         distribution=distribution,
@@ -826,6 +855,9 @@ def main(config_path):
             "LocalGLMboost": fit_time_local_glm_boost,
         },
     )
+    feature_importance_variation_table = create_feature_importance_variation_table(
+        fold_feature_importances
+    )
 
     # Save data
     logger.log("Saving data")
@@ -835,6 +867,9 @@ def main(config_path):
     feature_importances.to_csv(f"{output_path}/feature_importance.csv")
     loss_table.to_csv(f"{output_path}/loss_table.csv")
     time_table.to_csv(f"{output_path}/time_table.csv")
+    feature_importance_variation_table.to_csv(
+        f"{output_path}/feature_importance_std.csv"
+    )
     with open(f"{output_path}/model_parameters.json", "w") as json_file:
         json.dump(model_parameters, json_file)
 
