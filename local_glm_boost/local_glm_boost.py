@@ -220,11 +220,14 @@ class LocalGLMBooster:
         features_to_initiate = [glm_init for glm_init in self.glm_init.values()]
 
         if self.intercept_term:
-            to_minimize = lambda z0_and_beta: self.distribution.loss(
-                y=y,
-                z=z0_and_beta[0] + X[:, features_to_initiate] @ z0_and_beta[1:],
-                w=w,
-            ).sum()
+
+            def to_minimize(z0_and_beta: np.ndarray) -> float:
+                return self.distribution.loss(
+                    y=y,
+                    z=z0_and_beta[0] + X[:, features_to_initiate] @ z0_and_beta[1:],
+                    w=w,
+                ).sum()
+
             glm_coefficients = minimize(
                 fun=to_minimize,
                 x0=np.zeros(1 + sum(features_to_initiate)),
@@ -233,11 +236,14 @@ class LocalGLMBooster:
             beta0 = np.zeros(X.shape[1])
             beta0[features_to_initiate] = glm_coefficients[1:]
         else:
-            to_minimize = lambda beta: self.distribution.loss(
-                y=y,
-                z=X[:, features_to_initiate] @ beta,
-                w=w,
-            ).sum()
+
+            def to_minimize(beta: np.ndarray) -> float:
+                return self.distribution.loss(
+                    y=y,
+                    z=X[:, features_to_initiate] @ beta,
+                    w=w,
+                ).sum()
+
             beta0 = minimize(
                 fun=to_minimize,
                 x0=np.zeros(sum(features_to_initiate)),
@@ -259,17 +265,14 @@ class LocalGLMBooster:
         :param z: The current prediction values.
         :return: The new intercept
         """
-        to_minimize = lambda z0: self.distribution.loss(
-            y=y,
-            z=z - self.z0 + z0,
-            w=w,
-        ).sum()
+
+        def to_minimize(z0: float) -> float:
+            return self.distribution.loss(y=y, z=z - self.z0 + z0, w=w).sum()
+
         z0_opt = minimize(
             fun=to_minimize,
             x0=self.z0,
-        )[
-            "x"
-        ][0]
+        )["x"][0]
         return z0_opt
 
     def predict_parameter(
