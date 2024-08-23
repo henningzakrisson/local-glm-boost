@@ -6,6 +6,7 @@ import logging
 import argparse
 import sys
 import json
+import time
 
 import statsmodels.api as sm
 import numpy as np
@@ -184,17 +185,20 @@ def extract_data(df):
 
 def fit_intercept(data, distribution):
     X, y, w = extract_data(data)
+    start_time = time.time()
     intercept = LocalGLMBooster(
         n_estimators=0,
         distribution=distribution,
         glm_init=False,
     )
     intercept.fit(X=X, y=y, w=w)
-    return intercept
+    computation_time = time.time() - start_time
+    return intercept, computation_time
 
 
 def fit_glm(data, distribution, intercept_term):
     X, y, w = extract_data(data)
+    start_time = time.time()
     glm = LocalGLMBooster(
         n_estimators=0,
         distribution=distribution,
@@ -202,11 +206,13 @@ def fit_glm(data, distribution, intercept_term):
         intercept_term=intercept_term,
     )
     glm.fit(X=X, y=y, w=w)
-    return glm
+    computation_time = time.time() - start_time
+    return glm, computation_time
 
 
 def fit_gbm(data, distribution, config, rng, logger, stratified):
     X, y, w = extract_data(data)
+    start_tuning_time = time.time()
     model_standard = LocalGLMBooster(
         distribution=distribution,
         n_estimators=0,
@@ -231,7 +237,8 @@ def fit_gbm(data, distribution, config, rng, logger, stratified):
     )
     n_estimators = tuning_results_gbm["n_estimators"]
     tuning_loss = tuning_results_gbm["loss"]
-
+    tuning_time = time.time() - start_tuning_time
+    start_fit_time = time.time()
     gbm = LocalGLMBooster(
         n_estimators=n_estimators,
         learning_rate=config["learning_rate"],
@@ -242,7 +249,8 @@ def fit_gbm(data, distribution, config, rng, logger, stratified):
         glm_init=False,
     )
     gbm.fit(X=sm.add_constant(X.copy()), y=y, w=w)
-    return gbm, n_estimators, tuning_loss
+    fit_time = time.time() - start_fit_time
+    return gbm, n_estimators, tuning_loss, tuning_time, fit_time
 
 
 def fit_local_glm_boost(
@@ -257,6 +265,7 @@ def fit_local_glm_boost(
     n_estimators_max,
 ):
     X, y, w = extract_data(data)
+    start_tuning_time = time.time()
     local_glm_boost = LocalGLMBooster(
         n_estimators=0,
         learning_rate=config["learning_rate"],
@@ -282,7 +291,9 @@ def fit_local_glm_boost(
     )
     n_estimators = tuning_results["n_estimators"]
     tuning_loss = tuning_results["loss"]
+    tuning_time = time.time() - start_tuning_time
 
+    start_fit_time = time.time()
     local_glm_boost = LocalGLMBooster(
         n_estimators=n_estimators,
         learning_rate=config["learning_rate"],
@@ -292,7 +303,8 @@ def fit_local_glm_boost(
         glm_init=True,
     )
     local_glm_boost.fit(X=X, y=y, w=w, parallel_fit=parallel_fit)
-    return local_glm_boost, n_estimators, tuning_loss
+    fit_time = time.time() - start_fit_time
+    return local_glm_boost, n_estimators, tuning_loss, tuning_time, fit_time
 
 
 def consolidate_tuning_loss(tuning_loss, tuning_loss_gbm, features):
@@ -392,6 +404,14 @@ def calculate_loss_results(train_data, test_data, loss_function):
                 y=data["y"], z=data[f"z_{model}"], w=data["w"]
             ).mean()
     return loss_table
+
+
+def create_time_table(tune_times, fit_times):
+    time_table = pd.DataFrame(columns=["tune_time", "fit_time"])
+    for model in ["Intercept", "GLM", "GBM", "LocalGLMboost"]:
+        time_table.loc[model, "tune_time"] = tune_times[model]
+        time_table.loc[model, "fit_time"] = fit_times[model]
+    return time_table
 
 
 def int_to_roman(num):
@@ -737,13 +757,15 @@ def main(config_path):
     # Fit models
     logger.append_format_level("Fitting models")
     logger.log("Intercept")
-    intercept = fit_intercept(data=train_data, distribution=distribution)
+    intercept, fit_time_intercept = fit_intercept(
+        data=train_data, distribution=distribution
+    )
     logger.log("GLM")
-    glm = fit_glm(
+    glm, fit_time_glm = fit_glm(
         data=train_data, distribution=distribution, intercept_term=intercept_term
     )
     logger.log("GBM")
-    gbm, n_estimators_gbm, tuning_loss_gbm = fit_gbm(
+    gbm, n_estimators_gbm, tuning_loss_gbm, tune_time_gbm, fit_time_gbm = fit_gbm(
         data=train_data,
         distribution=distribution,
         config=config,
@@ -752,7 +774,13 @@ def main(config_path):
         stratified=stratified,
     )
     logger.log("LocalGLMboost")
-    local_glm_boost, n_estimators, tuning_loss = fit_local_glm_boost(
+    (
+        local_glm_boost,
+        n_estimators,
+        tuning_loss,
+        tune_time_local_glm_boost,
+        fit_time_local_glm_boost,
+    ) = fit_local_glm_boost(
         data=train_data,
         distribution=distribution,
         config=config,
@@ -784,6 +812,20 @@ def main(config_path):
     feature_importances = calculate_feature_importance(local_glm_boost, features)
     model_parameters = save_model_parameters(models, features)
     loss_table = calculate_loss_results(train_data, test_data, loss_function)
+    time_table = create_time_table(
+        tune_times={
+            "Intercept": np.nan,
+            "GLM": np.nan,
+            "GBM": tune_time_gbm,
+            "LocalGLMboost": tune_time_local_glm_boost,
+        },
+        fit_times={
+            "Intercept": fit_time_intercept,
+            "GLM": fit_time_glm,
+            "GBM": fit_time_gbm,
+            "LocalGLMboost": fit_time_local_glm_boost,
+        },
+    )
 
     # Save data
     logger.log("Saving data")
@@ -792,6 +834,7 @@ def main(config_path):
     test_data.to_csv(f"{output_path}/test_data.csv")
     feature_importances.to_csv(f"{output_path}/feature_importance.csv")
     loss_table.to_csv(f"{output_path}/loss_table.csv")
+    time_table.to_csv(f"{output_path}/time_table.csv")
     with open(f"{output_path}/model_parameters.json", "w") as json_file:
         json.dump(model_parameters, json_file)
 
