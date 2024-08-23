@@ -27,7 +27,7 @@ class LocalGLMBoostLogger:
         self.logger.setLevel(logging.INFO)
         self.logger.addHandler(logging.StreamHandler())
         formatter = logging.Formatter(
-            f"[%(asctime)s][%(message)s]",
+            "[%(asctime)s][%(message)s]",
             datefmt="%Y-%m-%d %H:%M",
         )
         self.logger.handlers[0].setFormatter(formatter)

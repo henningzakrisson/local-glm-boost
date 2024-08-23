@@ -82,9 +82,10 @@ class BoostingTree(DecisionTreeRegressor):
         :param features: The indices of the features to use for the tree.
         :param node_index: The index of the node to update
         """
-        node_loss = lambda step: self.distribution.loss(
-            y=y, z=z + X[:, j] * step, w=w
-        ).sum()
+
+        def node_loss(step: float) -> float:
+            return self.distribution.loss(y=y, z=z + X[:, j] * step, w=w).sum()
+
         node_value = minimize(
             fun=node_loss,
             x0=self.tree_.value[node_index][0],

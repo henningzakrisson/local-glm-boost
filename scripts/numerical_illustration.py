@@ -13,6 +13,10 @@ import pandas as pd
 from rpy2.robjects import r
 from rpy2.rinterface_lib.callbacks import logger as rpy2_logger
 
+from local_glm_boost import LocalGLMBooster
+from local_glm_boost.utils.tuning import tune_n_estimators
+from local_glm_boost.utils.logger import LocalGLMBoostLogger
+
 rpy2_logger.setLevel(logging.ERROR)
 
 # Add the parent directory to the Python path to be able
@@ -20,11 +24,6 @@ rpy2_logger.setLevel(logging.ERROR)
 script_dir = os.path.dirname(__file__)
 parent_dir = os.path.dirname(script_dir)
 sys.path.append(parent_dir)
-
-from local_glm_boost import LocalGLMBooster
-from local_glm_boost.utils.tuning import tune_n_estimators
-from local_glm_boost.utils.logger import LocalGLMBoostLogger
-from local_glm_boost.utils.distributions import initiate_distribution
 
 
 def setup_output_folder():
@@ -693,8 +692,13 @@ def main(config_path):
         )
 
         distribution = "normal"
-        link = lambda z: z
-        loss_function = lambda y, z, w: (y - w * link(z)) ** 2
+
+        def link(z):
+            return z
+
+        def loss_function(y, z, w):
+            return (y - w * link(z)) ** 2
+
         stratified = False
         n_estimators_max = config["n_estimators_max"]
 
@@ -705,14 +709,19 @@ def main(config_path):
         )
 
         distribution = "poisson"
-        link = lambda z: np.exp(z)
-        loss_function = lambda y, z, w: poisson_deviance(y, w, z)
+
+        def link(z):
+            return np.exp(z)
+
+        def loss_function(y, z, w):
+            return poisson_deviance(y, w, z)
+
         stratified = True
-        categorical_features = [
-            "VehBrand",
-            "Region",
-            "VehGas",
-        ]
+        # categorical_features = [
+        #     "VehBrand",
+        #     "Region",
+        #     "VehGas",
+        # ]
         features = [
             feature
             for feature in train_data.columns

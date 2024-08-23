@@ -309,7 +309,7 @@ class LocalGLMBoosterTestCase(unittest.TestCase):
             self.assertEqual(
                 feature_importances[i][1],
                 0,
-                msg=f"Feature importance for non-selected feature non-zero",
+                msg="Feature importance for non-selected feature non-zero",
             )
 
     def test_feature_selection_pandas(self):
@@ -330,7 +330,7 @@ class LocalGLMBoosterTestCase(unittest.TestCase):
             self.assertEqual(
                 feature_importances[coefficient]["b"],
                 0,
-                msg=f"Feature importance for non-selected feature non-zero",
+                msg="Feature importance for non-selected feature non-zero",
             )
 
     def test_hyperparameter_setting(self):
