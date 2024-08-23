@@ -92,6 +92,8 @@ def tune_n_estimators(
         "valid": [result[1] for result in results],
     }
 
+    feature_importances = {fold: results[fold][2] for fold in range(n_splits)}
+
     n_estimators = _find_n_estimators(
         loss=np.sum(loss["valid"], axis=0),
         n_estimators_max=n_estimators_max,
@@ -105,6 +107,7 @@ def tune_n_estimators(
     return {
         "n_estimators": n_estimators,
         "loss": loss,
+        "feature_importances": feature_importances,
     }
 
 
@@ -255,7 +258,9 @@ def _evaluate_fold(
             loss_valid[k + 1 :, :] = loss_valid[k, -1]
             break
 
-    return loss_train, loss_valid
+    feature_importances = model.compute_feature_importances("all")
+
+    return loss_train, loss_valid, feature_importances
 
 
 def _has_tuning_converged(

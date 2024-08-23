@@ -338,11 +338,16 @@ class LocalGLMBooster:
         :return: Feature importance as a dict with feature names and importances, or dict of dicts if feature is "all"
         """
         if feature == "all":
+            boosted_features = [
+                feature_name
+                for feature_name in self.feature_names
+                if self.n_estimators[feature_name] > 0
+            ]
             feature_importances = {
                 feature_name: self.compute_feature_importances(
                     feature=feature_name, normalize=normalize
                 )
-                for feature_name in self.feature_names
+                for feature_name in boosted_features
             }
         elif feature == "cumulative":
             feature_importances_all = self.compute_feature_importances(
