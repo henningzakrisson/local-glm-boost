@@ -341,9 +341,9 @@ def calculate_feature_importance(local_glm_boost, features):
     feature_importances = pd.DataFrame(index=features, columns=features)
     for j, feature in enumerate(features):
         if local_glm_boost.n_estimators[j] != 0:
-            feature_importances.loc[
-                feature
-            ] = local_glm_boost.compute_feature_importances(feature, normalize=False)
+            feature_importances.loc[feature] = (
+                local_glm_boost.compute_feature_importances(feature, normalize=False)
+            )
         else:
             feature_importances.loc[feature] = 0
 
@@ -420,8 +420,7 @@ def create_loss_table(output_path, config):
     elif prefix == "real":
         mse_table = 100 * mse_table.drop("True")
         mse_table.loc["LocalGLMnet"] = [23.728, 23.945]
-    mse_table = mse_table.round(4)
-    mse_table = mse_table.applymap(lambda x: f"{x:.3f}")
+    mse_table = mse_table.round(3).astype(str)
     mse_table.to_csv(f"{output_path}/plot_data/{prefix}_loss.csv")
 
 
@@ -504,9 +503,7 @@ def save_model_parameters_table(output_path, config, train_data, features):
         "variableImportance", [attention[5:] for attention in relevant_attentions]
     ] = parameter_table.loc[
         "variableImportance", [attention[5:] for attention in relevant_attentions]
-    ].apply(
-        lambda x: f"{x:.2f}"
-    )
+    ].apply(lambda x: f"{x:.2f}")
 
     if prefix == "sim":
         # Fix the column names
